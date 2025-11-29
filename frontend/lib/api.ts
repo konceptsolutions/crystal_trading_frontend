@@ -1,18 +1,25 @@
-import axios from 'axios';
+import axios from "axios";
 
 // Old localhost URL (commented out for production)
 // const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
 
 // Vercel backend URL
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'https://crystal-trading-frontend-piom.vercel.app/api';
+const API_URL =
+  process.env.NEXT_PUBLIC_API_URL ||
+  "https://crystal-trading-frontend-piom.vercel.app/api";
+
+// Log API URL for debugging (only in development)
+if (typeof window !== "undefined" && process.env.NODE_ENV === "development") {
+  console.log("🔗 API URL:", API_URL);
+}
 
 // Suppress browser extension errors in console
-if (typeof window !== 'undefined') {
+if (typeof window !== "undefined") {
   const originalError = console.error;
   console.error = (...args: any[]) => {
     if (
-      args[0]?.toString().includes('runtime.lastError') ||
-      args[0]?.toString().includes('Receiving end does not exist')
+      args[0]?.toString().includes("runtime.lastError") ||
+      args[0]?.toString().includes("Receiving end does not exist")
     ) {
       // Suppress browser extension errors
       return;
@@ -24,14 +31,14 @@ if (typeof window !== 'undefined') {
 const api = axios.create({
   baseURL: API_URL,
   headers: {
-    'Content-Type': 'application/json',
+    "Content-Type": "application/json",
   },
   timeout: 10000, // 10 second timeout
 });
 
 // Add token to requests
 api.interceptors.request.use((config) => {
-  const token = localStorage.getItem('token');
+  const token = localStorage.getItem("token");
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
   }
@@ -52,27 +59,36 @@ api.interceptors.response.use(
   },
   (error) => {
     const now = Date.now();
-    const shouldLog = !connectionErrorLogged || (now - lastConnectionErrorTime) > CONNECTION_ERROR_THROTTLE;
-    
+    const shouldLog =
+      !connectionErrorLogged ||
+      now - lastConnectionErrorTime > CONNECTION_ERROR_THROTTLE;
+
     // Handle network errors
-    if (error.code === 'ECONNABORTED' || error.message === 'Network Error' || 
-        error.code === 'ERR_CONNECTION_REFUSED' || error.message?.includes('ERR_CONNECTION_REFUSED')) {
+    if (
+      error.code === "ECONNABORTED" ||
+      error.message === "Network Error" ||
+      error.code === "ERR_CONNECTION_REFUSED" ||
+      error.message?.includes("ERR_CONNECTION_REFUSED")
+    ) {
       if (shouldLog) {
-        console.error('⚠️ Backend server is not running. Please start it using: npm run dev (in backend folder)');
+        console.error(
+          "⚠️ Backend server is not running. Please start it using: npm run dev (in backend folder)"
+        );
         connectionErrorLogged = true;
         lastConnectionErrorTime = now;
       }
-      return Promise.reject(new Error('Backend server is not running. Please start it first.'));
+      return Promise.reject(
+        new Error("Backend server is not running. Please start it first.")
+      );
     }
-    
+
     if (error.response?.status === 401) {
-      localStorage.removeItem('token');
-      localStorage.removeItem('user');
-      window.location.href = '/login';
+      localStorage.removeItem("token");
+      localStorage.removeItem("user");
+      window.location.href = "/login";
     }
     return Promise.reject(error);
   }
 );
 
 export default api;
-
