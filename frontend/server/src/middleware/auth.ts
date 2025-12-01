@@ -29,7 +29,13 @@ export const verifyToken = (
     ) as { userId: string; email: string; name: string; role: string };
 
     req.userId = decoded.userId;
-    req.user = decoded;
+    // Normalize decoded payload to match AuthRequest.user shape (id vs userId)
+    req.user = {
+      id: decoded.userId,
+      email: decoded.email,
+      name: decoded.name,
+      role: decoded.role,
+    };
 
     next();
   } catch (error) {

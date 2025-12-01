@@ -52,8 +52,10 @@ router.post('/register', async (req, res) => {
         name: user.name,
         role: user.role,
       },
-      process.env.JWT_SECRET || 'fallback-secret',
-      { expiresIn: process.env.JWT_EXPIRES_IN || '7d' }
+      (process.env.JWT_SECRET || 'fallback-secret') as jwt.Secret,
+      {
+        expiresIn: (process.env.JWT_EXPIRES_IN || '7d') as jwt.SignOptions['expiresIn'],
+      }
     );
 
     res.status(201).json({
@@ -120,8 +122,10 @@ router.post('/login', async (req, res) => {
         name: user.name,
         role: user.role,
       },
-      process.env.JWT_SECRET || 'fallback-secret',
-      { expiresIn: process.env.JWT_EXPIRES_IN || '7d' }
+      (process.env.JWT_SECRET || 'fallback-secret') as jwt.Secret,
+      {
+        expiresIn: (process.env.JWT_EXPIRES_IN || '7d') as jwt.SignOptions['expiresIn'],
+      }
     );
 
     res.json({
