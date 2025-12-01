@@ -31,7 +31,7 @@ export async function GET(request: NextRequest) {
               type: true,
             },
           },
-          children: {
+          subcategories: {
             select: {
               id: true,
               name: true,
