@@ -28,16 +28,11 @@ if (-not (Test-Path "node_modules")) {
     }
 }
 
-# Check if .env.local exists
-if (-not (Test-Path ".env.local")) {
-    Write-Host "Creating .env.local file..." -ForegroundColor Yellow
-    @"
-NEXT_PUBLIC_API_URL=http://localhost:5000/api
-"@ | Out-File -FilePath ".env.local" -Encoding utf8
-    Write-Host ".env.local created successfully!" -ForegroundColor Green
-}
+# Check if .env.local exists (not needed anymore since API is merged)
+# API is now served from the same server on /api
 
-# Start the server
-Write-Host "Starting frontend server on http://localhost:3000..." -ForegroundColor Green
+# Start the server (now includes backend)
+Write-Host "Starting application on http://localhost:3000..." -ForegroundColor Green
+Write-Host "This will start both frontend and backend API together" -ForegroundColor Yellow
 npm run dev
 

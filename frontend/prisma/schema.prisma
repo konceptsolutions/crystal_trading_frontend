@@ -1,0 +1,249 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  password  String
+  name      String
+  role      String   @default("user")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Part {
+  id           String      @id @default(cuid())
+  partNo       String      @unique
+  masterPartNo String?
+  brand        String?
+  description  String?
+  mainCategory String?
+  subCategory  String?
+  application  String?
+  hsCode       String?
+  uom          String?
+  weight       Float?
+  reOrderLevel Int         @default(0)
+  cost         Float?
+  priceA       Float?
+  priceB       Float?
+  priceM       Float?
+  rackNo       String?
+  origin       String?
+  grade        String?
+  status       String      @default("A")
+  smc          String?
+  size         String?
+  remarks      String?
+  imageUrl1    String?     // Image for P1 tab
+  imageUrl2    String?     // Image for P2 tab
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+  models       PartModel[]
+  stock        Stock?
+  kitItems     KitItem[]
+  purchaseOrderItems PurchaseOrderItem[]
+  salesInvoiceItems SalesInvoiceItem[]
+}
+
+model PartModel {
+  id       String   @id @default(cuid())
+  partId   String
+  part     Part     @relation(fields: [partId], references: [id], onDelete: Cascade)
+  modelNo  String
+  qtyUsed  Int
+  tab      String   @default("P1") // P1 or P2
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([partId])
+}
+
+model Stock {
+  id       String   @id @default(cuid())
+  partId   String   @unique
+  part     Part     @relation(fields: [partId], references: [id], onDelete: Cascade)
+  quantity Int      @default(0)
+  location String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Category {
+  id          String     @id @default(cuid())
+  name        String
+  type        String     // "main" or "sub"
+  parentId    String?    // For subcategories, reference to main category
+  parent      Category?  @relation("CategoryHierarchy", fields: [parentId], references: [id], onDelete: Cascade)
+  subcategories Category[] @relation("CategoryHierarchy")
+  description String?
+  status      String     @default("A") // "A" for active, "I" for inactive
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  @@index([type])
+  @@index([parentId])
+}
+
+model Kit {
+  id          String     @id @default(cuid())
+  kitNo       String     @unique
+  name        String
+  description String?
+  totalCost   Float      @default(0)
+  price       Float?
+  status      String     @default("A") // "A" for active, "I" for inactive
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+  items       KitItem[]
+
+  @@index([kitNo])
+}
+
+model KitItem {
+  id          String   @id @default(cuid())
+  kitId       String
+  kit         Kit      @relation(fields: [kitId], references: [id], onDelete: Cascade)
+  partId      String
+  part        Part     @relation(fields: [partId], references: [id], onDelete: Cascade)
+  quantity    Int      @default(1)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([kitId])
+  @@index([partId])
+}
+
+model Supplier {
+  id              String          @id @default(cuid())
+  code            String          @unique
+  name            String
+  email           String?
+  phone           String?
+  address         String?
+  city            String?
+  state           String?
+  country         String?
+  zipCode         String?
+  contactPerson   String?
+  taxId           String?
+  paymentTerms    String?
+  notes           String?
+  status          String          @default("A") // "A" for active, "I" for inactive
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+  purchaseOrders  PurchaseOrder[]
+
+  @@index([code])
+  @@index([status])
+}
+
+model PurchaseOrder {
+  id              String              @id @default(cuid())
+  poNo            String              @unique
+  type            String              // "purchase" or "direct"
+  supplierId      String?             // Reference to supplier (only for purchase orders)
+  supplier        Supplier?           @relation(fields: [supplierId], references: [id], onDelete: SetNull)
+  supplierName    String              // Store supplier name for direct orders or as backup
+  supplierEmail   String?
+  supplierPhone   String?
+  supplierAddress String?
+  orderDate       DateTime            @default(now())
+  expectedDate    DateTime?
+  status          String              @default("draft") // draft, pending, approved, received, cancelled
+  subTotal        Float               @default(0)
+  tax             Float               @default(0)
+  discount        Float               @default(0)
+  totalAmount     Float               @default(0)
+  notes           String?
+  createdBy       String?
+  approvedBy      String?
+  approvedAt      DateTime?
+  receivedAt      DateTime?
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+  items           PurchaseOrderItem[]
+
+  @@index([poNo])
+  @@index([status])
+  @@index([type])
+  @@index([orderDate])
+  @@index([supplierId])
+}
+
+model SalesInvoice {
+  id              String              @id @default(cuid())
+  invoiceNo       String              @unique
+  quotationId     String?
+  customerName    String
+  customerEmail   String?
+  customerPhone   String?
+  customerAddress String?
+  invoiceDate     DateTime            @default(now())
+  dueDate         DateTime
+  status          String              @default("draft") // draft, sent, paid, overdue, cancelled
+  subTotal        Float               @default(0)
+  tax             Float               @default(0)
+  discount        Float               @default(0)
+  totalAmount     Float               @default(0)
+  paidAmount      Float               @default(0)
+  balanceAmount   Float               @default(0)
+  notes           String?
+  createdBy       String?
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+  items           SalesInvoiceItem[]
+
+  @@index([invoiceNo])
+  @@index([status])
+  @@index([invoiceDate])
+  @@index([customerName])
+}
+
+model SalesInvoiceItem {
+  id              String        @id @default(cuid())
+  salesInvoiceId  String
+  salesInvoice    SalesInvoice  @relation(fields: [salesInvoiceId], references: [id], onDelete: Cascade)
+  partId          String?
+  part            Part?         @relation(fields: [partId], references: [id], onDelete: SetNull)
+  partNo          String
+  description     String?
+  quantity        Int           @default(1)
+  unitPrice       Float
+  totalPrice      Float
+  uom             String?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  @@index([salesInvoiceId])
+  @@index([partId])
+}
+
+model PurchaseOrderItem {
+  id              String         @id @default(cuid())
+  purchaseOrderId String
+  purchaseOrder   PurchaseOrder  @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
+  partId          String?
+  part            Part?          @relation(fields: [partId], references: [id], onDelete: SetNull)
+  partNo          String         // Store part number even if part is deleted
+  description     String?
+  quantity        Int
+  unitPrice       Float
+  totalPrice      Float
+  uom             String?
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  @@index([purchaseOrderId])
+  @@index([partId])
+}
+

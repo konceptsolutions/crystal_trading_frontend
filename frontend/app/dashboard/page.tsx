@@ -4,6 +4,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuthStore } from '@/lib/store';
 import api from '@/lib/api';
+import InventoryOverview from '@/components/charts/InventoryOverview';
 
 interface DashboardStats {
   totalParts: number;
@@ -70,37 +71,86 @@ const AnimatedCounter = ({ value, duration = 1500 }: { value: number; duration?:
   return <span>{count.toLocaleString()}</span>;
 };
 
-// Mini Sparkline Chart Component
+// Modern SaaS-Style Sparkline Chart Component
 const SparklineChart = ({ data, color = 'primary' }: { data: number[]; color?: string }) => {
   const max = Math.max(...data);
   const min = Math.min(...data);
   const range = max - min || 1;
   
+  // Create smooth curve points
   const points = data.map((value, index) => {
-    const x = (index / (data.length - 1)) * 100;
-    const y = 100 - ((value - min) / range) * 80 - 10;
-    return `${x},${y}`;
-  }).join(' ');
+    const x = (index / (data.length - 1 || 1)) * 100;
+    const y = 100 - ((value - min) / range) * 75 - 12;
+    return { x, y };
+  });
   
-  const colorClass = color === 'primary' ? '#ff6b35' : color === 'green' ? '#10b981' : color === 'blue' ? '#3b82f6' : '#8b5cf6';
+  // Create smooth path using bezier curves
+  const createSmoothPath = (points: typeof points) => {
+    if (points.length < 2) return '';
+    if (points.length === 2) {
+      return `M ${points[0].x},${points[0].y} L ${points[1].x},${points[1].y}`;
+    }
+    
+    let path = `M ${points[0].x},${points[0].y}`;
+    for (let i = 0; i < points.length - 1; i++) {
+      const p0 = points[Math.max(0, i - 1)];
+      const p1 = points[i];
+      const p2 = points[i + 1];
+      const p3 = points[Math.min(points.length - 1, i + 2)];
+      
+      const cp1x = p1.x + (p2.x - p0.x) / 6;
+      const cp1y = p1.y + (p2.y - p0.y) / 6;
+      const cp2x = p2.x - (p3.x - p1.x) / 6;
+      const cp2y = p2.y - (p3.y - p1.y) / 6;
+      
+      path += ` C ${cp1x},${cp1y} ${cp2x},${cp2y} ${p2.x},${p2.y}`;
+    }
+    return path;
+  };
+  
+  const smoothPath = createSmoothPath(points);
+  const areaPath = `${smoothPath} L 100,100 L 0,100 Z`;
+  const pointString = points.map(p => `${p.x},${p.y}`).join(' ');
+  
+  const colorMap: Record<string, { main: string; light: string }> = {
+    primary: { main: '#ff6b35', light: '#ff6b35' },
+    green: { main: '#10b981', light: '#10b981' },
+    blue: { main: '#3b82f6', light: '#3b82f6' },
+    purple: { main: '#8b5cf6', light: '#8b5cf6' },
+  };
+  
+  const colors = colorMap[color] || colorMap.primary;
+  
+  const gradientId = `sparkline-gradient-${color}-${Math.random().toString(36).substr(2, 9)}`;
   
   return (
-    <svg className="w-full h-12" viewBox="0 0 100 100" preserveAspectRatio="none">
+    <svg 
+      className="w-full h-14" 
+      viewBox="0 0 100 100" 
+      preserveAspectRatio="none"
+      style={{ 
+        shapeRendering: 'geometricPrecision',
+        overflow: 'visible'
+      }}
+    >
       <defs>
-        <linearGradient id={`gradient-${color}`} x1="0%" y1="0%" x2="0%" y2="100%">
-          <stop offset="0%" stopColor={colorClass} stopOpacity="0.3" />
-          <stop offset="100%" stopColor={colorClass} stopOpacity="0" />
+        <linearGradient id={gradientId} x1="0%" y1="0%" x2="0%" y2="100%">
+          <stop offset="0%" stopColor={colors.main} stopOpacity="0.12" />
+          <stop offset="50%" stopColor={colors.main} stopOpacity="0.06" />
+          <stop offset="100%" stopColor={colors.main} stopOpacity="0" />
         </linearGradient>
       </defs>
-      <polygon
-        points={`0,100 ${points} 100,100`}
-        fill={`url(#gradient-${color})`}
+      {/* Subtle area fill */}
+      <path
+        d={areaPath}
+        fill={`url(#${gradientId})`}
       />
-      <polyline
-        points={points}
+      {/* Sharp, clean line */}
+      <path
+        d={smoothPath}
         fill="none"
-        stroke={colorClass}
-        strokeWidth="2"
+        stroke={colors.main}
+        strokeWidth="1.5"
         strokeLinecap="round"
         strokeLinejoin="round"
       />
@@ -108,81 +158,396 @@ const SparklineChart = ({ data, color = 'primary' }: { data: number[]; color?: s
   );
 };
 
-// Area Chart Component for Revenue
-const AreaChart = ({ data, labels }: { data: number[]; labels: string[] }) => {
-  const max = Math.max(...data) * 1.1;
-  const height = 200;
+// Old AreaChart component - replaced with Recharts InventoryOverview component
+// Keeping for reference but not used
+const _AreaChart = ({ data, labels, partsUsedData }: { data: number[]; labels: string[]; partsUsedData?: number[] }) => {
+  const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
+  const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
+  
+  // Calculate min/max from both datasets
+  const allData = partsUsedData ? [...data, ...partsUsedData] : data;
+  const dataMax = Math.max(...allData);
+  const dataMin = Math.min(...allData);
+  const max = Math.ceil(dataMax * 1.1);
+  const min = Math.max(0, Math.floor(dataMin * 0.9));
+  const range = max - min || 1;
+  
+  // Modern spacing - generous padding for clean edges
+  const height = 320;
   const width = 100;
+  const topPadding = 24;
+  const rightPadding = 12;
+  const leftPadding = 20; // Space for Y-axis labels
+  const bottomPadding = 36; // Space for X-axis labels
+  
+  // Calculate chart area dimensions
+  const chartWidth = width - leftPadding - rightPadding;
+  const chartHeight = height - topPadding - bottomPadding;
+  const chartStartX = leftPadding;
+  const chartStartY = topPadding;
+  const chartEndY = height - bottomPadding;
   
   const points = data.map((value, index) => {
-    const x = (index / (data.length - 1)) * width;
-    const y = height - (value / max) * height;
-    return { x, y, value };
+    const x = chartStartX + (index / (data.length - 1 || 1)) * chartWidth;
+    const y = chartEndY - ((value - min) / range) * chartHeight;
+    return { x, y, value, index };
   });
   
-  const pathPoints = points.map(p => `${p.x},${p.y}`).join(' L ');
-  const areaPath = `M 0,${height} L ${pathPoints} L ${width},${height} Z`;
+  const partsUsedPoints = partsUsedData?.map((value, index) => {
+    const x = chartStartX + (index / (partsUsedData.length - 1 || 1)) * chartWidth;
+    const y = chartEndY - ((value - min) / range) * chartHeight;
+    return { x, y, value, index };
+  }) || [];
+  
+  // Create smooth bezier curve path using Catmull-Rom spline approximation
+  const createSmoothPath = (points: typeof points) => {
+    if (points.length < 2) return '';
+    if (points.length === 2) {
+      return `M ${points[0].x},${points[0].y} L ${points[1].x},${points[1].y}`;
+    }
+    
+    let path = `M ${points[0].x},${points[0].y}`;
+    
+    for (let i = 0; i < points.length - 1; i++) {
+      const p0 = points[Math.max(0, i - 1)];
+      const p1 = points[i];
+      const p2 = points[i + 1];
+      const p3 = points[Math.min(points.length - 1, i + 2)];
+      
+      // Calculate control points for smooth curve
+      const cp1x = p1.x + (p2.x - p0.x) / 6;
+      const cp1y = p1.y + (p2.y - p0.y) / 6;
+      const cp2x = p2.x - (p3.x - p1.x) / 6;
+      const cp2y = p2.y - (p3.y - p1.y) / 6;
+      
+      path += ` C ${cp1x},${cp1y} ${cp2x},${cp2y} ${p2.x},${p2.y}`;
+    }
+    
+    return path;
+  };
+  
+  const smoothPath = createSmoothPath(points);
+  const partsUsedPath = partsUsedData ? createSmoothPath(partsUsedPoints) : '';
+  const areaPath = `${smoothPath} L ${width - rightPadding},${chartEndY} L ${chartStartX},${chartEndY} Z`;
+  
+  // Calculate Y-axis labels (5 evenly spaced values) - clean formatting
+  const yAxisSteps = 5;
+  const yAxisLabels = Array.from({ length: yAxisSteps }, (_, i) => {
+    const value = min + (i / (yAxisSteps - 1)) * (max - min);
+    return Math.round(value);
+  }).reverse();
   
   return (
-    <div className="relative h-56">
-      <svg className="w-full h-full" viewBox={`0 0 ${width} ${height + 20}`} preserveAspectRatio="none">
+    <div className="relative w-full" style={{ height: '420px', minHeight: '420px' }} key={`chart-${data.join('-')}`}>
+      <svg 
+        className="w-full h-full" 
+        viewBox={`0 0 ${width} ${height}`} 
+        preserveAspectRatio="none"
+        style={{ 
+          overflow: 'visible', 
+          width: '100%', 
+          height: '100%',
+          shapeRendering: 'geometricPrecision',
+          textRendering: 'geometricPrecision',
+          fontSmooth: 'always',
+          WebkitFontSmoothing: 'antialiased',
+          MozOsxFontSmoothing: 'grayscale'
+        }}
+      >
         <defs>
+          {/* Clean, subtle gradient - no exaggeration */}
           <linearGradient id="areaGradient" x1="0%" y1="0%" x2="0%" y2="100%">
-            <stop offset="0%" stopColor="#ff6b35" stopOpacity="0.4" />
-            <stop offset="50%" stopColor="#ff6b35" stopOpacity="0.15" />
+            <stop offset="0%" stopColor="#ff6b35" stopOpacity="0.12" />
+            <stop offset="50%" stopColor="#ff6b35" stopOpacity="0.06" />
             <stop offset="100%" stopColor="#ff6b35" stopOpacity="0" />
           </linearGradient>
+          {/* Subtle shadow for depth - no blurry glow */}
+          <filter id="subtleShadow" x="-20%" y="-20%" width="140%" height="140%">
+            <feDropShadow dx="0" dy="1" stdDeviation="1" floodColor="#ff6b35" floodOpacity="0.15"/>
+          </filter>
         </defs>
         
-        {/* Grid lines */}
-        {[0, 25, 50, 75, 100].map((y) => (
-          <line
-            key={y}
-            x1="0"
-            y1={(y / 100) * height}
-            x2={width}
-            y2={(y / 100) * height}
-            stroke="#e5e7eb"
-            strokeWidth="0.5"
-            strokeDasharray="2,2"
+        {/* Minimal grid lines - very low opacity */}
+        {yAxisLabels.map((labelValue, i) => {
+          const yPercent = i / (yAxisSteps - 1);
+          const yPos = chartStartY + (yPercent * chartHeight);
+          return (
+            <g key={i}>
+              <line
+                x1={chartStartX}
+                y1={yPos}
+                x2={width - rightPadding}
+                y2={yPos}
+                stroke="#e2e8f0"
+                strokeWidth="0.5"
+                strokeDasharray="2,4"
+                opacity="0.4"
+                className="transition-opacity duration-300"
+              />
+              {/* Sharp Y-axis labels - no stretching */}
+              <text
+                x={chartStartX - 10}
+                y={yPos + 3.5}
+                fontSize="10"
+                fill="#475569"
+                textAnchor="end"
+                fontWeight="500"
+                fontFamily="ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif"
+                style={{ 
+                  letterSpacing: '0',
+                  fontFeatureSettings: '"tnum"',
+                  fontVariantNumeric: 'tabular-nums'
+                }}
+              >
+                {labelValue}
+              </text>
+            </g>
+          );
+        })}
+        
+        {/* Area fill with animation */}
+        <path 
+          d={areaPath} 
+          fill="url(#areaGradient)" 
+          className="transition-all duration-1000 ease-out"
+          style={{
+            animation: 'fadeInArea 1s ease-out',
+          }}
+        />
+        
+        {/* Parts Used line - thin, sharp, dashed */}
+        {partsUsedData && partsUsedPath && (
+          <path
+            d={partsUsedPath}
+            fill="none"
+            stroke="#fb923c"
+            strokeWidth="1.5"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeDasharray="4,3"
+            className="transition-all duration-1000 ease-out"
+            style={{ opacity: 0.7 }}
           />
-        ))}
+        )}
         
-        {/* Area fill */}
-        <path d={areaPath} fill="url(#areaGradient)" />
-        
-        {/* Line */}
+        {/* Parts Added line - thin, sharp, clean */}
         <path
-          d={`M ${pathPoints}`}
+          d={smoothPath}
           fill="none"
           stroke="#ff6b35"
           strokeWidth="2"
           strokeLinecap="round"
           strokeLinejoin="round"
+          filter="url(#subtleShadow)"
+          className="transition-all duration-1000 ease-out"
+          style={{
+            animation: 'drawLine 1.5s ease-out',
+          }}
         />
         
-        {/* Data points */}
-        {points.map((point, index) => (
-          <g key={index}>
-            <circle
-              cx={point.x}
-              cy={point.y}
-              r="3"
-              fill="white"
-              stroke="#ff6b35"
-              strokeWidth="2"
-              className="transition-all duration-300 hover:r-4"
-            />
-          </g>
-        ))}
+        {/* Minimal data points - thin, sharp, properly aligned */}
+        {points.map((point) => {
+          const isHovered = hoveredIndex === point.index;
+          const isSelected = selectedIndex === point.index;
+          const radius = isHovered || isSelected ? 3.5 : 2.5;
+          const partsUsedPoint = partsUsedPoints[point.index];
+          
+          return (
+            <g key={point.index}>
+              {/* Parts Used data point - small and clean */}
+              {partsUsedPoint && (
+                <g
+                  className="cursor-pointer transition-all duration-200"
+                  onMouseEnter={() => setHoveredIndex(point.index)}
+                  onMouseLeave={() => setHoveredIndex(null)}
+                  onClick={() => setSelectedIndex(selectedIndex === point.index ? null : point.index)}
+                >
+                  {(isHovered || isSelected) && (
+                    <circle
+                      cx={partsUsedPoint.x}
+                      cy={partsUsedPoint.y}
+                      r={radius + 1.5}
+                      fill="#fb923c"
+                      opacity="0.12"
+                      className="transition-all duration-200"
+                    />
+                  )}
+                  <circle
+                    cx={partsUsedPoint.x}
+                    cy={partsUsedPoint.y}
+                    r={isHovered || isSelected ? 3 : 2.5}
+                    fill="white"
+                    stroke="#fb923c"
+                    strokeWidth={isHovered || isSelected ? "2" : "1.5"}
+                    className="transition-all duration-200"
+                  />
+                </g>
+              )}
+              
+              {/* Parts Added data point - small and clean */}
+              <g
+                className="cursor-pointer transition-all duration-200"
+                onMouseEnter={() => setHoveredIndex(point.index)}
+                onMouseLeave={() => setHoveredIndex(null)}
+                onClick={() => setSelectedIndex(selectedIndex === point.index ? null : point.index)}
+              >
+                {(isHovered || isSelected) && (
+                  <circle
+                    cx={point.x}
+                    cy={point.y}
+                    r={radius + 2}
+                    fill="#ff6b35"
+                    opacity="0.12"
+                    className="transition-all duration-200"
+                  />
+                )}
+                
+                <circle
+                  cx={point.x}
+                  cy={point.y}
+                  r={radius}
+                  fill="white"
+                  stroke="#ff6b35"
+                  strokeWidth={isHovered || isSelected ? "2.5" : "2"}
+                  className="transition-all duration-200"
+                />
+                
+                {/* Clean, minimal tooltip */}
+                {(isHovered || isSelected) && (
+                  <g>
+                    <rect
+                      x={point.x - 26}
+                      y={point.y - 52}
+                      width="52"
+                      height={partsUsedPoint ? "36" : "22"}
+                      rx="5"
+                      fill="#0f172a"
+                      opacity="0.95"
+                      stroke="#1e293b"
+                      strokeWidth="0.5"
+                      className="transition-all duration-200"
+                    />
+                    <polygon
+                      points={`${point.x - 4},${point.y - 16} ${point.x + 4},${point.y - 16} ${point.x},${point.y - 10}`}
+                      fill="#0f172a"
+                      opacity="0.95"
+                    />
+                    <text
+                      x={point.x}
+                      y={point.y - 38}
+                      fontSize="8.5"
+                      fill="#94a3b8"
+                      textAnchor="middle"
+                      fontWeight="500"
+                      fontFamily="ui-sans-serif, system-ui, sans-serif"
+                    >
+                      Added
+                    </text>
+                    <text
+                      x={point.x}
+                      y={point.y - 26}
+                      fontSize="11"
+                      fill="white"
+                      textAnchor="middle"
+                      fontWeight="600"
+                      fontFamily="ui-sans-serif, system-ui, sans-serif"
+                      style={{ fontFeatureSettings: '"tnum"', fontVariantNumeric: 'tabular-nums' }}
+                    >
+                      {point.value}
+                    </text>
+                    {partsUsedPoint && (
+                      <>
+                        <text
+                          x={point.x}
+                          y={point.y - 12}
+                          fontSize="8.5"
+                          fill="#94a3b8"
+                          textAnchor="middle"
+                          fontWeight="500"
+                          fontFamily="ui-sans-serif, system-ui, sans-serif"
+                        >
+                          Used
+                        </text>
+                        <text
+                          x={point.x}
+                          y={point.y}
+                          fontSize="11"
+                          fill="#fb923c"
+                          textAnchor="middle"
+                          fontWeight="600"
+                          fontFamily="ui-sans-serif, system-ui, sans-serif"
+                          style={{ fontFeatureSettings: '"tnum"', fontVariantNumeric: 'tabular-nums' }}
+                        >
+                          {partsUsedPoint.value}
+                        </text>
+                      </>
+                    )}
+                  </g>
+                )}
+              </g>
+            </g>
+          );
+        })}
       </svg>
       
-      {/* X-axis labels */}
-      <div className="absolute bottom-0 left-0 right-0 flex justify-between text-xs text-gray-400 px-1">
-        {labels.map((label, index) => (
-          <span key={index}>{label}</span>
-        ))}
+      {/* Evenly spaced X-axis labels - clean and readable */}
+      <div className="absolute bottom-4 left-0 right-0" style={{ 
+        paddingLeft: `calc(${leftPadding}% + 0.5rem)`, 
+        paddingRight: `calc(${rightPadding}% + 0.5rem)`,
+      }}>
+        {labels.map((label, index) => {
+          const labelPosition = (index / (labels.length - 1 || 1)) * 100;
+          const isActive = hoveredIndex === index || selectedIndex === index;
+          return (
+            <span 
+              key={index}
+              className={`absolute transition-all duration-200 cursor-pointer ${
+                isActive
+                  ? 'text-primary-600 font-semibold'
+                  : 'text-slate-500 hover:text-slate-700'
+              }`}
+              onMouseEnter={() => setHoveredIndex(index)}
+              onMouseLeave={() => setHoveredIndex(null)}
+              onClick={() => setSelectedIndex(selectedIndex === index ? null : index)}
+              style={{ 
+                left: `${labelPosition}%`,
+                transform: `translateX(-50%)`,
+                fontSize: '11px',
+                fontWeight: isActive ? '600' : '500',
+                fontFamily: 'ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+                letterSpacing: '0',
+                lineHeight: '1.4',
+                WebkitFontSmoothing: 'antialiased',
+                MozOsxFontSmoothing: 'grayscale',
+              }}
+            >
+              {label}
+            </span>
+          );
+        })}
       </div>
+      
+      {/* Animation styles */}
+      <style jsx>{`
+        @keyframes fadeInArea {
+          from {
+            opacity: 0;
+          }
+          to {
+            opacity: 1;
+          }
+        }
+        @keyframes drawLine {
+          from {
+            stroke-dasharray: 1000;
+            stroke-dashoffset: 1000;
+          }
+          to {
+            stroke-dasharray: 1000;
+            stroke-dashoffset: 0;
+          }
+        }
+      `}</style>
     </div>
   );
 };
@@ -397,9 +762,40 @@ export default function DashboardPage() {
     }
   };
 
-  // Chart data based on real stats
-  const revenueData = useMemo(() => [35, 52, 41, 68, 55, 73, 62, 85, 78, 92, 88, 105], []);
-  const revenueLabels = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  // Chart data with time range support - formatted for Recharts
+  const [timeRange, setTimeRange] = useState<'week' | 'month' | 'year'>('month');
+  const [isChartTransitioning, setIsChartTransitioning] = useState(false);
+  
+  const chartData = useMemo(() => {
+    if (timeRange === 'week') {
+      const labels = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+      const added = [12, 18, 15, 22, 20, 25, 28];
+      const used = [8, 12, 10, 15, 14, 18, 20];
+      return labels.map((month, index) => ({
+        month,
+        added: added[index],
+        used: used[index],
+      }));
+    } else if (timeRange === 'month') {
+      const labels = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+      const added = [35, 52, 41, 68, 55, 73, 62, 85, 78, 92, 88, 105];
+      const used = [28, 38, 32, 45, 42, 55, 48, 62, 58, 68, 65, 75];
+      return labels.map((month, index) => ({
+        month,
+        added: added[index],
+        used: used[index],
+      }));
+    } else {
+      const labels = ['2023', '2024', '2025', '2026', '2027', '2028', '2029', '2030', '2031', '2032', '2033', '2034'];
+      const added = [420, 580, 650, 720, 680, 750, 820, 890, 950, 1020, 1100, 1250];
+      const used = [350, 480, 540, 600, 570, 630, 680, 740, 790, 850, 920, 1050];
+      return labels.map((month, index) => ({
+        month,
+        added: added[index],
+        used: used[index],
+      }));
+    }
+  }, [timeRange]);
   
   const orderStatusData = useMemo(() => {
     const draft = purchaseOrders.filter(po => po.status === 'draft').length || 3;
@@ -430,7 +826,7 @@ export default function DashboardPage() {
   ];
 
   return (
-    <div className="min-h-screen bg-gray-50/50 p-6">
+    <div className="min-h-screen bg-gray-50/50 p-8">
       {/* Header Section */}
       <div className="mb-8">
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
@@ -454,77 +850,127 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* Stats Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 mb-8">
+      {/* Modern Stats Cards - Clean SaaS Style */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
         {[
-          { label: 'Total Parts', value: stats.totalParts, icon: <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" /></svg>, color: 'primary', sparkData: [20, 35, 28, 45, 38, 52, 48] },
-          { label: 'Categories', value: stats.totalCategories, icon: <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" /></svg>, color: 'blue', sparkData: [10, 15, 12, 18, 15, 22, 20] },
-          { label: 'Active Kits', value: stats.totalKits, icon: <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" /></svg>, color: 'purple', sparkData: [5, 8, 12, 10, 15, 13, 18] },
-          { label: 'Suppliers', value: stats.totalSuppliers, icon: <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" /></svg>, color: 'green', sparkData: [15, 22, 18, 25, 28, 32, 30] },
+          { label: 'Total Parts', value: stats.totalParts, icon: <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" /></svg>, color: 'primary', sparkData: [20, 35, 28, 45, 38, 52, 48] },
+          { label: 'Categories', value: stats.totalCategories, icon: <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" /></svg>, color: 'blue', sparkData: [10, 15, 12, 18, 15, 22, 20] },
+          { label: 'Active Kits', value: stats.totalKits, icon: <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" /></svg>, color: 'purple', sparkData: [5, 8, 12, 10, 15, 13, 18] },
+          { label: 'Suppliers', value: stats.totalSuppliers, icon: <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" /></svg>, color: 'green', sparkData: [15, 22, 18, 25, 28, 32, 30] },
         ].map((stat, index) => {
-          const colorMap: Record<string, { bg: string; icon: string; text: string }> = {
-            primary: { bg: 'bg-primary-50', icon: 'text-primary-500', text: 'text-primary-600' },
-            blue: { bg: 'bg-blue-50', icon: 'text-blue-500', text: 'text-blue-600' },
-            purple: { bg: 'bg-purple-50', icon: 'text-purple-500', text: 'text-purple-600' },
-            green: { bg: 'bg-emerald-50', icon: 'text-emerald-500', text: 'text-emerald-600' },
+          const colorMap: Record<string, { bg: string; icon: string; text: string; badge: string }> = {
+            primary: { bg: 'bg-orange-50', icon: 'text-orange-600', text: 'text-orange-700', badge: 'bg-orange-100' },
+            blue: { bg: 'bg-blue-50', icon: 'text-blue-600', text: 'text-blue-700', badge: 'bg-blue-100' },
+            purple: { bg: 'bg-purple-50', icon: 'text-purple-600', text: 'text-purple-700', badge: 'bg-purple-100' },
+            green: { bg: 'bg-emerald-50', icon: 'text-emerald-600', text: 'text-emerald-700', badge: 'bg-emerald-100' },
           };
           const colors = colorMap[stat.color];
           
           return (
             <div
               key={index}
-              className="bg-white rounded-2xl p-5 border border-gray-100 shadow-soft hover:shadow-medium transition-all duration-300 group cursor-pointer"
+              className="bg-white rounded-xl p-6 border border-slate-200/60 hover:border-slate-300 hover:shadow-md transition-all duration-200 group"
             >
-              <div className="flex items-start justify-between mb-4">
-                <div className={`w-12 h-12 rounded-xl ${colors.bg} flex items-center justify-center ${colors.icon} group-hover:scale-110 transition-transform`}>
+              <div className="flex items-start justify-between mb-5">
+                <div className={`w-10 h-10 rounded-lg ${colors.bg} flex items-center justify-center ${colors.icon} group-hover:scale-105 transition-transform`}>
                   {stat.icon}
                 </div>
-                <span className={`text-xs font-medium ${colors.text} ${colors.bg} px-2 py-1 rounded-full`}>
+                <span className={`text-xs font-semibold ${colors.text} ${colors.badge} px-2.5 py-1 rounded-md`}>
                   +12%
                 </span>
               </div>
-              <div className="mb-2">
-                <h3 className="text-3xl font-bold text-gray-900">
+              <div className="mb-4">
+                <h3 className="text-3xl font-bold text-slate-900 mb-1" style={{ 
+                  fontFeatureSettings: '"tnum"',
+                  fontVariantNumeric: 'tabular-nums',
+                  letterSpacing: '-0.02em'
+                }}>
                   <AnimatedCounter value={stat.value} />
                 </h3>
-                <p className="text-sm text-gray-500">{stat.label}</p>
+                <p className="text-sm font-medium text-slate-600">{stat.label}</p>
               </div>
-              <SparklineChart data={stat.sparkData} color={stat.color === 'green' ? 'green' : stat.color === 'blue' ? 'blue' : stat.color === 'purple' ? 'purple' : 'primary'} />
+              <div className="mt-4 -mx-6 -mb-6">
+                <SparklineChart data={stat.sparkData} color={stat.color === 'green' ? 'green' : stat.color === 'blue' ? 'blue' : stat.color === 'purple' ? 'purple' : 'primary'} />
+              </div>
             </div>
           );
         })}
       </div>
 
       {/* Main Content Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-8">
         {/* Revenue Chart */}
-        <div className="lg:col-span-2 bg-white rounded-2xl p-6 border border-gray-100 shadow-soft">
-          <div className="flex items-center justify-between mb-6">
+        <div className="lg:col-span-2 bg-white rounded-2xl p-8 border border-gray-100 shadow-soft">
+          <div className="flex items-center justify-between mb-8">
             <div>
-              <h3 className="text-lg font-semibold text-gray-900">Inventory Overview</h3>
-              <p className="text-sm text-gray-500">Monthly inventory movement</p>
+              <h3 className="text-xl font-bold text-gray-900 mb-1">Inventory Overview</h3>
+              <p className="text-sm text-gray-500">
+                {timeRange === 'week' ? 'Weekly inventory movement' : timeRange === 'month' ? 'Monthly inventory movement' : 'Yearly inventory movement'}
+              </p>
             </div>
-            <div className="flex items-center gap-2">
-              <button className="px-3 py-1.5 text-sm font-medium text-gray-600 hover:bg-gray-100 rounded-lg transition-colors">Week</button>
-              <button className="px-3 py-1.5 text-sm font-medium bg-primary-50 text-primary-600 rounded-lg">Month</button>
-              <button className="px-3 py-1.5 text-sm font-medium text-gray-600 hover:bg-gray-100 rounded-lg transition-colors">Year</button>
+            <div className="flex items-center gap-2 bg-gray-100 p-1 rounded-lg">
+              <button 
+                onClick={() => {
+                  setIsChartTransitioning(true);
+                  setTimeout(() => {
+                    setTimeRange('week');
+                    setTimeout(() => setIsChartTransitioning(false), 50);
+                  }, 200);
+                }}
+                className={`px-4 py-1.5 text-sm font-medium rounded-md transition-all duration-300 ${
+                  timeRange === 'week'
+                    ? 'bg-white text-primary-600 shadow-sm'
+                    : 'text-gray-600 hover:text-gray-900'
+                }`}
+              >
+                Week
+              </button>
+              <button 
+                onClick={() => {
+                  setIsChartTransitioning(true);
+                  setTimeout(() => {
+                    setTimeRange('month');
+                    setTimeout(() => setIsChartTransitioning(false), 50);
+                  }, 200);
+                }}
+                className={`px-4 py-1.5 text-sm font-medium rounded-md transition-all duration-300 ${
+                  timeRange === 'month'
+                    ? 'bg-white text-primary-600 shadow-sm'
+                    : 'text-gray-600 hover:text-gray-900'
+                }`}
+              >
+                Month
+              </button>
+              <button 
+                onClick={() => {
+                  setIsChartTransitioning(true);
+                  setTimeout(() => {
+                    setTimeRange('year');
+                    setTimeout(() => setIsChartTransitioning(false), 50);
+                  }, 200);
+                }}
+                className={`px-4 py-1.5 text-sm font-medium rounded-md transition-all duration-300 ${
+                  timeRange === 'year'
+                    ? 'bg-white text-primary-600 shadow-sm'
+                    : 'text-gray-600 hover:text-gray-900'
+                }`}
+              >
+                Year
+              </button>
             </div>
           </div>
-          <AreaChart data={revenueData} labels={revenueLabels} />
-          <div className="flex items-center justify-center gap-6 mt-4 pt-4 border-t border-gray-100">
-            <div className="flex items-center gap-2">
-              <div className="w-3 h-3 rounded-full bg-primary-500"></div>
-              <span className="text-sm text-gray-600">Parts Added</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <div className="w-3 h-3 rounded-full bg-primary-200"></div>
-              <span className="text-sm text-gray-600">Parts Used</span>
-            </div>
+          <div 
+            key={timeRange} 
+            className={`w-full transition-opacity duration-300 ease-in-out ${
+              isChartTransitioning ? 'opacity-0' : 'opacity-100'
+            }`}
+          >
+            <InventoryOverview data={chartData} timeRange={timeRange} />
           </div>
         </div>
 
         {/* Order Status Donut Chart */}
-        <div className="bg-white rounded-2xl p-6 border border-gray-100 shadow-soft">
+        <div className="bg-white rounded-2xl p-8 border border-gray-100 shadow-soft">
           <div className="mb-6">
             <h3 className="text-lg font-semibold text-gray-900">Order Status</h3>
             <p className="text-sm text-gray-500">Current purchase orders</p>
@@ -545,9 +991,9 @@ export default function DashboardPage() {
       </div>
 
       {/* Quick Actions & Activity Section */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-8">
         {/* Quick Actions */}
-        <div className="lg:col-span-2 bg-white rounded-2xl p-6 border border-gray-100 shadow-soft">
+        <div className="lg:col-span-2 bg-white rounded-2xl p-8 border border-gray-100 shadow-soft">
           <div className="mb-6">
             <h3 className="text-lg font-semibold text-gray-900">Quick Actions</h3>
             <p className="text-sm text-gray-500">Frequently used shortcuts</p>
@@ -600,7 +1046,7 @@ export default function DashboardPage() {
         </div>
 
         {/* Recent Activity */}
-        <div className="bg-white rounded-2xl p-6 border border-gray-100 shadow-soft">
+        <div className="bg-white rounded-2xl p-8 border border-gray-100 shadow-soft">
           <div className="flex items-center justify-between mb-6">
             <div>
               <h3 className="text-lg font-semibold text-gray-900">Recent Activity</h3>
@@ -619,7 +1065,7 @@ export default function DashboardPage() {
       </div>
 
       {/* Inventory Distribution */}
-      <div className="bg-white rounded-2xl p-6 border border-gray-100 shadow-soft">
+      <div className="bg-white rounded-2xl p-8 border border-gray-100 shadow-soft">
         <div className="flex items-center justify-between mb-6">
           <div>
             <h3 className="text-lg font-semibold text-gray-900">Inventory Distribution</h3>

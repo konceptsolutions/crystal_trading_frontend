@@ -1,21 +1,7 @@
 import axios from 'axios';
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
-
-// Suppress browser extension errors in console
-if (typeof window !== 'undefined') {
-  const originalError = console.error;
-  console.error = (...args: any[]) => {
-    if (
-      args[0]?.toString().includes('runtime.lastError') ||
-      args[0]?.toString().includes('Receiving end does not exist')
-    ) {
-      // Suppress browser extension errors
-      return;
-    }
-    originalError.apply(console, args);
-  };
-}
+// API is now part of the same Next.js app
+const API_URL = typeof window !== 'undefined' ? '/api' : process.env.NEXT_PUBLIC_API_URL || '/api';
 
 const api = axios.create({
   baseURL: API_URL,
@@ -27,9 +13,12 @@ const api = axios.create({
 
 // Add token to requests
 api.interceptors.request.use((config) => {
-  const token = localStorage.getItem('token');
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`;
+  // Only access localStorage on client side
+  if (typeof window !== 'undefined') {
+    const token = localStorage.getItem('token');
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`;
+    }
   }
   return config;
 });
@@ -54,7 +43,7 @@ api.interceptors.response.use(
     if (error.code === 'ECONNABORTED' || error.message === 'Network Error' || 
         error.code === 'ERR_CONNECTION_REFUSED' || error.message?.includes('ERR_CONNECTION_REFUSED')) {
       if (shouldLog) {
-        console.error('⚠️ Backend server is not running. Please start it using: npm run dev (in backend folder)');
+        console.error('⚠️ API request failed. Please check if the server is running.');
         connectionErrorLogged = true;
         lastConnectionErrorTime = now;
       }
@@ -62,9 +51,12 @@ api.interceptors.response.use(
     }
     
     if (error.response?.status === 401) {
-      localStorage.removeItem('token');
-      localStorage.removeItem('user');
-      window.location.href = '/login';
+      // Only access localStorage and window on client side
+      if (typeof window !== 'undefined') {
+        localStorage.removeItem('token');
+        localStorage.removeItem('user');
+        window.location.href = '/login';
+      }
     }
     return Promise.reject(error);
   }

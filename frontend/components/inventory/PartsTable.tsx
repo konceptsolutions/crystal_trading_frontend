@@ -43,9 +43,9 @@ export default function PartsTable({ onSelectPart, selectedPartId, refreshTrigge
         params.append('search', search);
       }
       const response = await api.get(`/parts?${params.toString()}`);
-      setParts(response.data.parts);
-      setTotalPages(response.data.pagination.totalPages);
-      setTotal(response.data.pagination.total);
+      setParts(response.data.parts || []);
+      setTotalPages(response.data.pagination?.totalPages || 1);
+      setTotal(response.data.pagination?.total || 0);
     } catch (error: any) {
       // Suppress repeated connection errors - they're already handled by api interceptor
       if (!error.message?.includes('Backend server is not running')) {

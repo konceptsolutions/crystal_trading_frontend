@@ -49,15 +49,18 @@ export const authService = {
   },
 
   getToken(): string | null {
+    if (typeof window === 'undefined') return null;
     return localStorage.getItem('token');
   },
 
   getUser(): User | null {
+    if (typeof window === 'undefined') return null;
     const userStr = localStorage.getItem('user');
     return userStr ? JSON.parse(userStr) : null;
   },
 
   isAuthenticated(): boolean {
+    if (typeof window === 'undefined') return false;
     return !!this.getToken();
   },
 };

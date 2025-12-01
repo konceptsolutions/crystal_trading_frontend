@@ -1,5 +1,6 @@
 import type { Metadata } from 'next'
 import './globals.css'
+import ConsoleErrorFilter from '@/components/console-error-filter'
 
 export const metadata: Metadata = {
   title: 'Inventory Management System',
@@ -12,30 +13,11 @@ export default function RootLayout({
   children: React.ReactNode
 }) {
   return (
-    <html lang="en">
-      <head>
-        <script
-          dangerouslySetInnerHTML={{
-            __html: `
-              // Suppress browser extension errors
-              if (typeof chrome !== 'undefined' && chrome.runtime) {
-                const originalSendMessage = chrome.runtime.sendMessage;
-                chrome.runtime.sendMessage = function(...args) {
-                  try {
-                    return originalSendMessage.apply(this, args);
-                  } catch (e) {
-                    if (e.message && e.message.includes('Receiving end does not exist')) {
-                      return;
-                    }
-                    throw e;
-                  }
-                };
-              }
-            `,
-          }}
-        />
-      </head>
-      <body>{children}</body>
+    <html lang="en" suppressHydrationWarning>
+      <body suppressHydrationWarning>
+        <ConsoleErrorFilter />
+        {children}
+      </body>
     </html>
   )
 }

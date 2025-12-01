@@ -40,68 +40,54 @@ A modern inventory management system built with Next.js frontend and Node.js bac
 
 ## Setup Instructions
 
-### 1. Clone and Navigate
+### 1. Navigate to Project
 
 ```bash
-cd "CTC-ERP system"
+cd "CTC-ERP system/frontend"
 ```
 
-### 2. Backend Setup
+### 2. Install Dependencies
 
 ```bash
-cd backend
 npm install
 ```
 
-The `.env` file is already configured for SQLite. If you need to recreate it:
+### 3. Environment Setup
+
+The `.env` file should be configured for SQLite. If you need to create it:
 
 ```env
-DATABASE_URL="file:./dev.db"
+DATABASE_URL="file:./prisma/dev.db"
 JWT_SECRET="your-super-secret-jwt-key-change-this-in-production"
 JWT_EXPIRES_IN="7d"
-PORT=5000
+PORT=3000
 NODE_ENV=development
 ```
 
-Initialize the database (already done, but if needed):
+**Note:** SQLite database file (`dev.db`) will be created automatically in the `prisma` folder.
+
+### 4. Initialize Database (if needed)
 
 ```bash
-npx prisma generate
-npx prisma migrate dev --name init
+npm run prisma:generate
+npm run prisma:migrate
 ```
 
-**Note:** SQLite database file (`dev.db`) will be created automatically in the `backend` folder.
-
-Start the backend server:
+### 5. Create Admin User (optional)
 
 ```bash
-npm run dev
+npm run create-admin
 ```
 
-The backend will run on `http://localhost:5000`
-
-### 3. Frontend Setup
-
-Open a new terminal:
-
-```bash
-cd frontend
-npm install
-```
-
-Create a `.env.local` file in the `frontend` directory:
-
-```env
-NEXT_PUBLIC_API_URL=http://localhost:5000/api
-```
-
-Start the frontend development server:
+### 6. Start the Application
 
 ```bash
 npm run dev
 ```
 
-The frontend will run on `http://localhost:3000`
+The application will run on `http://localhost:3000`
+- Frontend: `http://localhost:3000`
+- API: `http://localhost:3000/api`
 
 ### 4. Access the Application
 
@@ -113,24 +99,26 @@ The frontend will run on `http://localhost:3000`
 
 ```
 CTC-ERP-system/
-├── backend/
-│   ├── src/
-│   │   ├── routes/          # API routes
-│   │   ├── controllers/     # Business logic
-│   │   ├── middleware/      # Auth middleware
-│   │   └── utils/           # Utilities
-│   ├── prisma/
-│   │   └── schema.prisma    # Database schema
-│   └── package.json
-├── frontend/
+├── frontend/                 # Main application (merged frontend + backend)
 │   ├── app/
 │   │   ├── (auth)/          # Auth pages
-│   │   └── dashboard/       # Main inventory panel
+│   │   ├── dashboard/       # Main inventory panel
+│   │   └── api/             # Next.js API routes
+│   ├── server/
+│   │   └── src/
+│   │       ├── routes/      # Express API routes
+│   │       ├── middleware/  # Auth middleware
+│   │       └── scripts/     # Utility scripts
 │   ├── components/
 │   │   ├── ui/              # shadcn/ui components
 │   │   ├── inventory/       # Inventory components
 │   │   └── layout/          # Layout components
-│   └── lib/                 # Utilities, API client
+│   ├── lib/                 # Utilities, API client, Prisma
+│   ├── prisma/
+│   │   ├── schema.prisma    # Database schema
+│   │   └── migrations/      # Database migrations
+│   ├── server.ts            # Custom Next.js server with Express
+│   └── package.json
 └── README.md
 ```
 

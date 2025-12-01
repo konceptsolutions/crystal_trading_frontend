@@ -17,9 +17,12 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    init();
-    if (isAuthenticated) {
-      router.push('/dashboard');
+    // Only initialize on client side
+    if (typeof window !== 'undefined') {
+      init();
+      if (isAuthenticated) {
+        router.push('/dashboard');
+      }
     }
   }, [isAuthenticated, router, init]);
 

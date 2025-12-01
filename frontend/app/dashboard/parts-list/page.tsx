@@ -122,9 +122,9 @@ export default function PartsListPage() {
       if (gradeFilter) params.append('grade', gradeFilter);
       
       const response = await api.get(`/parts?${params.toString()}`);
-      setParts(response.data.parts);
-      setTotalPages(response.data.pagination.totalPages);
-      setTotal(response.data.pagination.total);
+      setParts(response.data.parts || []);
+      setTotalPages(response.data.pagination?.totalPages || 1);
+      setTotal(response.data.pagination?.total || 0);
     } catch (error: any) {
       if (!error.message?.includes('Backend server is not running')) {
         console.error('Failed to load parts:', error);

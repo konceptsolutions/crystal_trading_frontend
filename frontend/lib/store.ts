@@ -28,8 +28,11 @@ export const useAuthStore = create<AuthStore>((set) => ({
     set({ user: null, isAuthenticated: false });
   },
   init: () => {
-    const user = authService.getUser();
-    set({ user, isAuthenticated: !!user });
+    // Only initialize from localStorage on client side
+    if (typeof window !== 'undefined') {
+      const user = authService.getUser();
+      set({ user, isAuthenticated: !!user });
+    }
   },
 }));
 

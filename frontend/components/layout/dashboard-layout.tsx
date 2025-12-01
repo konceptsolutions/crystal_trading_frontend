@@ -26,9 +26,12 @@ export default function DashboardLayout({
   const [isTeamMembersOpen, setIsTeamMembersOpen] = useState(false);
 
   useEffect(() => {
-    init();
-    if (!isAuthenticated) {
-      router.push('/login');
+    // Only initialize on client side
+    if (typeof window !== 'undefined') {
+      init();
+      if (!isAuthenticated) {
+        router.push('/login');
+      }
     }
   }, [isAuthenticated, router, init]);
 
