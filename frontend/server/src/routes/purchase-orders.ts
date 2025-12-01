@@ -1,6 +1,6 @@
 import express from 'express';
 import { z } from 'zod';
-import { prisma } from '../../lib/utils/prisma';
+import { prisma } from '../../../lib/utils/prisma';
 import { verifyToken, AuthRequest } from '../middleware/auth';
 
 const router = express.Router();
