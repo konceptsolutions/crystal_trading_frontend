@@ -52,25 +52,25 @@ router.get('/', async (req: AuthRequest, res) => {
 
     if (search) {
       where.OR = [
-        { partNo: { contains: search, mode: 'insensitive' } },
-        { masterPartNo: { contains: search, mode: 'insensitive' } },
-        { description: { contains: search, mode: 'insensitive' } },
-        { brand: { contains: search, mode: 'insensitive' } },
+        { partNo: { contains: search } },
+        { masterPartNo: { contains: search } },
+        { description: { contains: search } },
+        { brand: { contains: search } },
       ];
     }
 
     // Add filters
     if (brand) {
-      where.brand = { contains: brand, mode: 'insensitive' };
+      where.brand = { contains: brand };
     }
     if (mainCategory) {
-      where.mainCategory = { contains: mainCategory, mode: 'insensitive' };
+      where.mainCategory = { contains: mainCategory };
     }
     if (status) {
       where.status = status;
     }
     if (origin) {
-      where.origin = { contains: origin, mode: 'insensitive' };
+      where.origin = { contains: origin };
     }
     if (grade) {
       where.grade = grade;
@@ -288,10 +288,10 @@ router.get('/search/:query', async (req: AuthRequest, res) => {
     const parts = await prisma.part.findMany({
       where: {
         OR: [
-          { partNo: { contains: query, mode: 'insensitive' } },
-          { masterPartNo: { contains: query, mode: 'insensitive' } },
-          { description: { contains: query, mode: 'insensitive' } },
-          { brand: { contains: query, mode: 'insensitive' } },
+          { partNo: { contains: query } },
+          { masterPartNo: { contains: query } },
+          { description: { contains: query } },
+          { brand: { contains: query } },
         ],
       },
       include: {

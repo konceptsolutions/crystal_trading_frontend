@@ -45,6 +45,8 @@ router.post('/register', async (req, res) => {
     });
 
     // Generate token
+    const jwtSecret: string = process.env.JWT_SECRET || 'fallback-secret';
+    const expiresIn: string = process.env.JWT_EXPIRES_IN || '7d';
     const token = jwt.sign(
       {
         userId: user.id,
@@ -52,8 +54,8 @@ router.post('/register', async (req, res) => {
         name: user.name,
         role: user.role,
       },
-      process.env.JWT_SECRET || 'fallback-secret',
-      { expiresIn: process.env.JWT_EXPIRES_IN || '7d' }
+      jwtSecret,
+      { expiresIn }
     );
 
     res.status(201).json({
@@ -113,6 +115,8 @@ router.post('/login', async (req, res) => {
     }
 
     // Generate token
+    const jwtSecret: string = process.env.JWT_SECRET || 'fallback-secret';
+    const expiresIn: string = process.env.JWT_EXPIRES_IN || '7d';
     const token = jwt.sign(
       {
         userId: user.id,
@@ -120,8 +124,8 @@ router.post('/login', async (req, res) => {
         name: user.name,
         role: user.role,
       },
-      process.env.JWT_SECRET || 'fallback-secret',
-      { expiresIn: process.env.JWT_EXPIRES_IN || '7d' }
+      jwtSecret,
+      { expiresIn }
     );
 
     res.json({

@@ -172,7 +172,7 @@ router.post('/', async (req: AuthRequest, res) => {
         discount,
         totalAmount,
         notes: data.notes || null,
-        createdBy: req.user?.id,
+        createdBy: req.user?.id || null,
         items: {
           create: data.items.map(item => ({
             partId: item.partId || null,
@@ -265,7 +265,7 @@ router.put('/:id', async (req: AuthRequest, res) => {
     let receivedAt = existing.receivedAt;
 
     if (data.status === 'approved' && existing.status !== 'approved') {
-      approvedBy = req.user?.id;
+      approvedBy = req.user?.id || null;
       approvedAt = new Date();
     }
 

@@ -21,7 +21,12 @@ app.use(cors());
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
-// Routes
+// Root route
+app.get('/', (req, res) => {
+  res.json({ status: 'ok', message: 'Inventory API is running' });
+});
+
+// Routes - handle both with and without /api prefix for Vercel compatibility
 app.use('/api/auth', authRoutes);
 app.use('/api/parts', partsRoutes);
 app.use('/api/models', modelsRoutes);
@@ -31,28 +36,59 @@ app.use('/api/purchase-orders', purchaseOrdersRoutes);
 app.use('/api/suppliers', suppliersRoutes);
 app.use('/api/sales-invoices', salesInvoicesRoutes);
 
+// Also handle routes without /api prefix (for Vercel routing)
+app.use('/auth', authRoutes);
+app.use('/parts', partsRoutes);
+app.use('/models', modelsRoutes);
+app.use('/categories', categoriesRoutes);
+app.use('/kits', kitsRoutes);
+app.use('/purchase-orders', purchaseOrdersRoutes);
+app.use('/suppliers', suppliersRoutes);
+app.use('/sales-invoices', salesInvoicesRoutes);
+
 // Health check
-app.get('/api/health', (req, res) => {
-  res.json({ status: 'ok', message: 'Inventory API is running' });
+app.get('/api/health', async (req, res) => {
+  try {
+    // Test database connection
+    const { prisma } = await import('./utils/prisma');
+    await prisma.$connect();
+    res.json({ status: 'ok', message: 'Inventory API is running', database: 'connected' });
+  } catch (error) {
+    res.status(500).json({ status: 'error', message: 'Database connection failed', error: (error as Error).message });
+  }
 });
 
-// Test database connection on startup
-import { prisma } from './utils/prisma';
-
-async function testDatabaseConnection() {
+app.get('/health', async (req, res) => {
   try {
+    // Test database connection
+    const { prisma } = await import('./utils/prisma');
     await prisma.$connect();
-    console.log('✓ Database connected successfully');
+    res.json({ status: 'ok', message: 'Inventory API is running', database: 'connected' });
   } catch (error) {
-    console.error('✗ Database connection failed:', error);
-    console.error('Please check your DATABASE_URL in .env file');
+    res.status(500).json({ status: 'error', message: 'Database connection failed', error: (error as Error).message });
   }
+});
+
+// Test database connection on startup (only for local development)
+if (process.env.NODE_ENV !== 'production' || process.env.VERCEL !== '1') {
+  import('./utils/prisma').then(({ prisma }) => {
+    prisma.$connect()
+      .then(() => console.log('✓ Database connected successfully'))
+      .catch((error) => {
+        console.error('✗ Database connection failed:', error);
+        console.error('Please check your DATABASE_URL in .env file');
+      });
+  });
 }
 
-testDatabaseConnection();
+// For local development
+if (process.env.NODE_ENV !== 'production' || process.env.VERCEL !== '1') {
+  app.listen(PORT, () => {
+    console.log(`Server is running on port ${PORT}`);
+    console.log(`API available at http://localhost:${PORT}/api`);
+  });
+}
 
-app.listen(PORT, () => {
-  console.log(`Server is running on port ${PORT}`);
-  console.log(`API available at http://localhost:${PORT}/api`);
-});
+// Export for Vercel serverless functions
+export default app;
 

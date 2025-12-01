@@ -1,19 +1,19 @@
 import { PrismaClient } from '@prisma/client';
-import path from 'path';
 
 const globalForPrisma = globalThis as unknown as {
   prisma: PrismaClient | undefined;
 };
 
-// Fix database URL if it's a relative path
-let databaseUrl = process.env.DATABASE_URL;
-if (databaseUrl && databaseUrl.startsWith('file:./')) {
-  const dbPath = databaseUrl.replace('file:./', '');
-  const absolutePath = path.resolve(process.cwd(), dbPath).replace(/\\/g, '/');
-  process.env.DATABASE_URL = `file:${absolutePath}`;
-}
-
-export const prisma = globalForPrisma.prisma ?? new PrismaClient();
+export const prisma = globalForPrisma.prisma ?? new PrismaClient({
+  log: process.env.NODE_ENV === 'development' ? ['query', 'error', 'warn'] : ['error'],
+});
 
 if (process.env.NODE_ENV !== 'production') globalForPrisma.prisma = prisma;
+
+// Handle Prisma connection errors gracefully (don't block serverless functions)
+if (process.env.NODE_ENV !== 'production' || process.env.VERCEL !== '1') {
+  prisma.$connect().catch((error) => {
+    console.error('Prisma connection error:', error);
+  });
+}
 
