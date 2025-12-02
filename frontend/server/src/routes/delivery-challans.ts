@@ -29,6 +29,30 @@ const deliveryChallanSchema = z.object({
 
 router.use(verifyToken);
 
+// Get next challan number
+router.get('/next-number', async (req: AuthRequest, res) => {
+  try {
+    const lastChallan = await prisma.deliveryChallan.findFirst({
+      orderBy: { challanNo: 'desc' },
+      select: { challanNo: true },
+    });
+
+    let nextNumber = 'DC-001';
+    if (lastChallan) {
+      const match = lastChallan.challanNo.match(/(\d+)$/);
+      if (match) {
+        const num = parseInt(match[1], 10);
+        nextNumber = `DC-${String(num + 1).padStart(3, '0')}`;
+      }
+    }
+
+    res.json({ nextNumber });
+  } catch (error: any) {
+    console.error('Get next challan number error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 // Get all delivery challans
 router.get('/', async (req: AuthRequest, res) => {
   try {

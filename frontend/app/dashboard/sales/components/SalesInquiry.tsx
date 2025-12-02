@@ -94,9 +94,20 @@ export default function SalesInquiry() {
     }
   };
 
-  const resetForm = () => {
+  const fetchNextNumber = async () => {
+    try {
+      const response = await api.get('/sales-inquiries/next-number');
+      return response.data.nextNumber;
+    } catch (error) {
+      console.error('Failed to fetch next inquiry number:', error);
+      return 'INQ-001';
+    }
+  };
+
+  const resetForm = async () => {
+    const nextNumber = await fetchNextNumber();
     setFormData({
-      inquiryNo: '',
+      inquiryNo: nextNumber,
       customerName: '',
       customerEmail: '',
       customerPhone: '',
@@ -155,8 +166,8 @@ export default function SalesInquiry() {
           />
         </div>
         <Button
-          onClick={() => {
-            resetForm();
+          onClick={async () => {
+            await resetForm();
             setShowForm(true);
           }}
           className="bg-primary-500 hover:bg-primary-600 text-white"
@@ -178,7 +189,8 @@ export default function SalesInquiry() {
                   <label className="block text-sm font-medium text-gray-700 mb-2">Inquiry No</label>
                   <Input
                     value={formData.inquiryNo}
-                    onChange={(e) => setFormData({ ...formData, inquiryNo: e.target.value })}
+                    disabled
+                    className="bg-gray-100 cursor-not-allowed"
                     required
                   />
                 </div>

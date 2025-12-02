@@ -426,8 +426,8 @@ router.get('/accounts', async (req: AuthRequest, res) => {
 
     if (search) {
       where.OR = [
-        { code: { contains: search, mode: 'insensitive' } },
-        { name: { contains: search, mode: 'insensitive' } },
+        { code: { contains: search } },
+        { name: { contains: search } },
       ];
     }
 

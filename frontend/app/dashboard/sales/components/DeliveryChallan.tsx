@@ -116,9 +116,20 @@ export default function DeliveryChallan() {
     }
   };
 
-  const resetForm = () => {
+  const fetchNextNumber = async () => {
+    try {
+      const response = await api.get('/delivery-challans/next-number');
+      return response.data.nextNumber;
+    } catch (error) {
+      console.error('Failed to fetch next challan number:', error);
+      return 'DC-001';
+    }
+  };
+
+  const resetForm = async () => {
+    const nextNumber = await fetchNextNumber();
     setFormData({
-      challanNo: '',
+      challanNo: nextNumber,
       customerName: '',
       customerEmail: '',
       customerPhone: '',
@@ -175,8 +186,8 @@ export default function DeliveryChallan() {
           />
         </div>
         <Button
-          onClick={() => {
-            resetForm();
+          onClick={async () => {
+            await resetForm();
             setShowForm(true);
           }}
           className="bg-primary-500 hover:bg-primary-600 text-white"
@@ -198,7 +209,8 @@ export default function DeliveryChallan() {
                   <label className="block text-sm font-medium text-gray-700 mb-2">Challan No</label>
                   <Input
                     value={formData.challanNo}
-                    onChange={(e) => setFormData({ ...formData, challanNo: e.target.value })}
+                    disabled
+                    className="bg-gray-100 cursor-not-allowed"
                     required
                   />
                 </div>

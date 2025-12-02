@@ -33,6 +33,30 @@ const salesQuotationSchema = z.object({
 
 router.use(verifyToken);
 
+// Get next quotation number
+router.get('/next-number', async (req: AuthRequest, res) => {
+  try {
+    const lastQuotation = await prisma.salesQuotation.findFirst({
+      orderBy: { quotationNo: 'desc' },
+      select: { quotationNo: true },
+    });
+
+    let nextNumber = 'SQ-001';
+    if (lastQuotation) {
+      const match = lastQuotation.quotationNo.match(/(\d+)$/);
+      if (match) {
+        const num = parseInt(match[1], 10);
+        nextNumber = `SQ-${String(num + 1).padStart(3, '0')}`;
+      }
+    }
+
+    res.json({ nextNumber });
+  } catch (error: any) {
+    console.error('Get next quotation number error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 // Get all sales quotations
 router.get('/', async (req: AuthRequest, res) => {
   try {

@@ -29,6 +29,30 @@ const salesReturnSchema = z.object({
 
 router.use(verifyToken);
 
+// Get next return number
+router.get('/next-number', async (req: AuthRequest, res) => {
+  try {
+    const lastReturn = await prisma.salesReturn.findFirst({
+      orderBy: { returnNo: 'desc' },
+      select: { returnNo: true },
+    });
+
+    let nextNumber = 'SR-001';
+    if (lastReturn) {
+      const match = lastReturn.returnNo.match(/(\d+)$/);
+      if (match) {
+        const num = parseInt(match[1], 10);
+        nextNumber = `SR-${String(num + 1).padStart(3, '0')}`;
+      }
+    }
+
+    res.json({ nextNumber });
+  } catch (error: any) {
+    console.error('Get next return number error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 // Get all sales returns
 router.get('/', async (req: AuthRequest, res) => {
   try {

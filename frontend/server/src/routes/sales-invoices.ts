@@ -97,13 +97,13 @@ router.get('/next-number', async (req: AuthRequest, res) => {
       },
     });
 
-    let nextNumber = '01';
+    let nextNumber = 'INV-001';
     if (lastInvoice) {
-      // Extract number from invoiceNo (assuming format like "INV-01" or "01")
+      // Extract number from invoiceNo (assuming format like "INV-001" or "INV-01")
       const match = lastInvoice.invoiceNo.match(/(\d+)$/);
       if (match) {
         const num = parseInt(match[1], 10);
-        nextNumber = String(num + 1).padStart(2, '0');
+        nextNumber = `INV-${String(num + 1).padStart(3, '0')}`;
       }
     }
 

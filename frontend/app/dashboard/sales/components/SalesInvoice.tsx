@@ -141,9 +141,20 @@ export default function SalesInvoice() {
     }
   };
 
-  const resetForm = () => {
+  const fetchNextNumber = async () => {
+    try {
+      const response = await api.get('/sales-invoices/next-number');
+      return response.data.nextNumber;
+    } catch (error) {
+      console.error('Failed to fetch next invoice number:', error);
+      return 'INV-001';
+    }
+  };
+
+  const resetForm = async () => {
+    const nextNumber = await fetchNextNumber();
     setFormData({
-      invoiceNo: '',
+      invoiceNo: nextNumber,
       customerName: '',
       customerEmail: '',
       customerPhone: '',
@@ -269,8 +280,8 @@ export default function SalesInvoice() {
           />
         </div>
         <Button
-          onClick={() => {
-            resetForm();
+          onClick={async () => {
+            await resetForm();
             setShowForm(true);
           }}
           className="bg-primary-500 hover:bg-primary-600 text-white"
@@ -292,7 +303,8 @@ export default function SalesInvoice() {
                   <label className="block text-sm font-medium text-gray-700 mb-2">Invoice No</label>
                   <Input
                     value={formData.invoiceNo}
-                    onChange={(e) => setFormData({ ...formData, invoiceNo: e.target.value })}
+                    disabled
+                    className="bg-gray-100 cursor-not-allowed"
                     required
                   />
                 </div>

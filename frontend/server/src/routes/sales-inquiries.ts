@@ -21,6 +21,30 @@ const salesInquirySchema = z.object({
 
 router.use(verifyToken);
 
+// Get next inquiry number
+router.get('/next-number', async (req: AuthRequest, res) => {
+  try {
+    const lastInquiry = await prisma.salesInquiry.findFirst({
+      orderBy: { inquiryNo: 'desc' },
+      select: { inquiryNo: true },
+    });
+
+    let nextNumber = 'INQ-001';
+    if (lastInquiry) {
+      const match = lastInquiry.inquiryNo.match(/(\d+)$/);
+      if (match) {
+        const num = parseInt(match[1], 10);
+        nextNumber = `INQ-${String(num + 1).padStart(3, '0')}`;
+      }
+    }
+
+    res.json({ nextNumber });
+  } catch (error: any) {
+    console.error('Get next inquiry number error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 // Get all sales inquiries
 router.get('/', async (req: AuthRequest, res) => {
   try {

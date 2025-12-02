@@ -139,9 +139,20 @@ export default function SalesQuotation() {
     router.push(`/dashboard/sales?tab=invoice&fromQuotation=${quotation.id}`);
   };
 
-  const resetForm = () => {
+  const fetchNextNumber = async () => {
+    try {
+      const response = await api.get('/sales-quotations/next-number');
+      return response.data.nextNumber;
+    } catch (error) {
+      console.error('Failed to fetch next quotation number:', error);
+      return 'SQ-001';
+    }
+  };
+
+  const resetForm = async () => {
+    const nextNumber = await fetchNextNumber();
     setFormData({
-      quotationNo: '',
+      quotationNo: nextNumber,
       customerName: '',
       customerEmail: '',
       customerPhone: '',
@@ -202,8 +213,8 @@ export default function SalesQuotation() {
           />
         </div>
         <Button
-          onClick={() => {
-            resetForm();
+          onClick={async () => {
+            await resetForm();
             setShowForm(true);
           }}
           className="bg-primary-500 hover:bg-primary-600 text-white"
@@ -225,7 +236,8 @@ export default function SalesQuotation() {
                   <label className="block text-sm font-medium text-gray-700 mb-2">Quotation No</label>
                   <Input
                     value={formData.quotationNo}
-                    onChange={(e) => setFormData({ ...formData, quotationNo: e.target.value })}
+                    disabled
+                    className="bg-gray-100 cursor-not-allowed"
                     required
                   />
                 </div>

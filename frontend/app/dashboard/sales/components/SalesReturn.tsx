@@ -115,9 +115,20 @@ export default function SalesReturn() {
     }
   };
 
-  const resetForm = () => {
+  const fetchNextNumber = async () => {
+    try {
+      const response = await api.get('/sales-returns/next-number');
+      return response.data.nextNumber;
+    } catch (error) {
+      console.error('Failed to fetch next return number:', error);
+      return 'SR-001';
+    }
+  };
+
+  const resetForm = async () => {
+    const nextNumber = await fetchNextNumber();
     setFormData({
-      returnNo: '',
+      returnNo: nextNumber,
       customerName: '',
       customerEmail: '',
       customerPhone: '',
@@ -173,8 +184,8 @@ export default function SalesReturn() {
           />
         </div>
         <Button
-          onClick={() => {
-            resetForm();
+          onClick={async () => {
+            await resetForm();
             setShowForm(true);
           }}
           className="bg-primary-500 hover:bg-primary-600 text-white"
@@ -196,7 +207,8 @@ export default function SalesReturn() {
                   <label className="block text-sm font-medium text-gray-700 mb-2">Return No</label>
                   <Input
                     value={formData.returnNo}
-                    onChange={(e) => setFormData({ ...formData, returnNo: e.target.value })}
+                    disabled
+                    className="bg-gray-100 cursor-not-allowed"
                     required
                   />
                 </div>
