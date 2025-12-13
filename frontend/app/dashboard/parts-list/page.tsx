@@ -4,6 +4,7 @@ import { useState, useEffect, useMemo, useCallback } from 'react';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import AnimatedSelect from '@/components/ui/animated-select';
+import AutocompleteInput from '@/components/ui/autocomplete-input';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -63,6 +64,7 @@ export default function PartsListPage() {
   
   // Get unique values for filter dropdowns
   const [availableMasterPartNos, setAvailableMasterPartNos] = useState<string[]>([]);
+  const [availablePartNos, setAvailablePartNos] = useState<string[]>([]);
   const [availableBrands, setAvailableBrands] = useState<string[]>([]);
   const [availableCategories, setAvailableCategories] = useState<string[]>([]);
   const [availableSubCategories, setAvailableSubCategories] = useState<string[]>([]);
@@ -105,7 +107,10 @@ export default function PartsListPage() {
       // Load brands from brands API
       try {
         const brandsResponse = await api.get('/brands');
-        const brandNames = brandsResponse.data.brands || [];
+        const brands = brandsResponse.data.brands || [];
+        const brandNames = Array.isArray(brands)
+          ? brands.map((b: any) => (typeof b === 'string' ? b : b?.name)).filter(Boolean)
+          : [];
         setAvailableBrands(brandNames);
       } catch (brandError) {
         console.error('Failed to load brands:', brandError);
@@ -116,12 +121,15 @@ export default function PartsListPage() {
         setAvailableBrands(brands);
       }
       
-      // Load master part numbers, categories, subcategories, and applications from parts
+      // Load master part numbers, part numbers, categories, subcategories, and applications from parts
       const response = await api.get('/parts?limit=10000');
       const allParts = response.data.parts || [];
       
       const masterPartNos = Array.from(new Set(allParts.map((p: Part) => p.masterPartNo).filter(Boolean))).sort() as string[];
       setAvailableMasterPartNos(masterPartNos);
+      
+      const partNos = Array.from(new Set(allParts.map((p: Part) => p.partNo).filter(Boolean))).sort() as string[];
+      setAvailablePartNos(partNos);
       
       const categories = Array.from(new Set(allParts.map((p: Part) => p.mainCategory).filter(Boolean))).sort() as string[];
       setAvailableCategories(categories);
@@ -585,7 +593,7 @@ export default function PartsListPage() {
   };
 
   return (
-    <div className="bg-gray-50 p-3 sm:p-4 md:p-6 min-h-screen w-full overflow-x-hidden">
+    <div className="bg-gray-50 p-3 sm:p-4 md:p-6 min-h-screen w-full">
       <div className="max-w-full mx-auto w-full">
         {/* Header */}
         <div className="mb-6">
@@ -820,48 +828,33 @@ export default function PartsListPage() {
               {/* Filter Row - Updated order as requested */}
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7 gap-4">
                 {/* 1. Master Part No */}
-                <AnimatedSelect
+                <AutocompleteInput
+                  id="masterPartNoFilter"
                   label="Master Part No"
                   value={masterPartNoFilter}
-                  onChange={(value) => {
-                    setMasterPartNoFilter(value);
-                  }}
-                  placeholder="All Master Part Nos"
-                  options={[
-                    { value: '', label: 'All Master Part Nos' },
-                    ...availableMasterPartNos.map((masterPartNo) => ({
-                      value: masterPartNo,
-                      label: masterPartNo,
-                    })),
-                  ]}
+                  onChange={(value) => setMasterPartNoFilter(value)}
+                  options={availableMasterPartNos}
+                  placeholder="Type to search or enter new"
                 />
 
                 {/* 2. Part No */}
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1.5">Part No</label>
-                  <Input
-                    placeholder="Filter by Part No..."
-                    value={partNoFilter}
-                    onChange={(e) => setPartNoFilter(e.target.value)}
-                    className="border-gray-300 focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20 h-10"
-                  />
-                </div>
+                <AutocompleteInput
+                  id="partNoFilter"
+                  label="Part No"
+                  value={partNoFilter}
+                  onChange={(value) => setPartNoFilter(value)}
+                  options={availablePartNos}
+                  placeholder="Type to search or enter new"
+                />
 
                 {/* 3. Brand */}
-                <AnimatedSelect
+                <AutocompleteInput
+                  id="brandFilter"
                   label="Brand"
                   value={brandFilter}
-                  onChange={(value) => {
-                    setBrandFilter(value);
-                  }}
-                  placeholder="All Brands"
-                  options={[
-                    { value: '', label: 'All Brands' },
-                    ...availableBrands.map((brand) => ({
-                      value: brand,
-                      label: brand,
-                    })),
-                  ]}
+                  onChange={(value) => setBrandFilter(value)}
+                  options={availableBrands}
+                  placeholder="Type to search or enter new"
                 />
 
                 {/* 4. Description */}
@@ -933,8 +926,8 @@ export default function PartsListPage() {
 
         {/* Parts Table Card - Hidden when creating or editing */}
         {!isCreatingPart && !editingPart && (
-        <Card className="bg-white border border-gray-200 shadow-sm rounded-xl">
-          <CardHeader className="border-b border-gray-200 bg-gray-50 py-3 px-4">
+        <Card className="bg-white border border-gray-200 shadow-sm rounded-xl overflow-hidden">
+          <CardHeader className="border-b border-gray-200 bg-gray-50 py-3 px-4 flex-shrink-0">
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
               <div>
                 <CardTitle className="text-lg sm:text-xl font-semibold text-gray-900">Parts List</CardTitle>
@@ -959,9 +952,9 @@ export default function PartsListPage() {
               )}
             </div>
           </CardHeader>
-          <CardContent className="p-0">
-            <div className="w-full max-w-full overflow-hidden">
-              <Table className="w-full">
+          <CardContent className="p-0 overflow-hidden">
+            <div className="w-full overflow-x-auto overflow-y-auto scroll-smooth" style={{ scrollBehavior: 'smooth', WebkitOverflowScrolling: 'touch', maxHeight: 'calc(100vh - 400px)' }}>
+              <Table className="min-w-full" style={{ minWidth: '1200px', width: 'max-content' }}>
                 <TableHeader>
                   <TableRow className="bg-gray-50 border-b-2 border-gray-200">
                     <TableHead className="font-semibold text-gray-900 py-2 px-2 text-center w-12">

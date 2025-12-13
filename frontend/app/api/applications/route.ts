@@ -17,6 +17,7 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const status = searchParams.get('status');
     const search = searchParams.get('search');
+    const subCategoryId = searchParams.get('subCategoryId');
 
     const where: any = {};
     
@@ -28,14 +29,23 @@ export async function GET(request: NextRequest) {
       where.name = { contains: search };
     }
 
+    if (subCategoryId) {
+      where.subCategoryId = subCategoryId;
+    }
+
     const applications = await prisma.application.findMany({
       where,
+      include: {
+        subCategory: true,
+      },
       orderBy: {
         name: 'asc',
       },
     });
 
-    return NextResponse.json({ applications });
+    // Return just the names for backward compatibility
+    const applicationNames = applications.map((app: any) => app.name);
+    return NextResponse.json({ applications: applicationNames });
   } catch (error: any) {
     console.error('Applications fetch error:', error);
     return NextResponse.json(
@@ -60,22 +70,42 @@ export async function POST(request: NextRequest) {
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
-    const { name } = body;
+    const { name, subCategoryId } = body;
 
     if (!name || !name.trim()) {
       return NextResponse.json({ error: 'Application name is required' }, { status: 400 });
     }
 
+    if (!subCategoryId) {
+      return NextResponse.json({ error: 'Sub-category is required to add an application' }, { status: 400 });
+    }
+
     const trimmedName = name.trim();
 
-    // Check if application already exists
-    const existing = await prisma.application.findUnique({
-      where: { name: trimmedName },
+    // Verify sub-category exists and is a sub-category (type === 'sub')
+    const subCategory = await prisma.category.findUnique({
+      where: { id: subCategoryId },
+    });
+
+    if (!subCategory) {
+      return NextResponse.json({ error: 'Sub-category not found' }, { status: 404 });
+    }
+
+    if (subCategory.type !== 'sub') {
+      return NextResponse.json({ error: 'Selected category is not a sub-category' }, { status: 400 });
+    }
+
+    // Check if application already exists for this sub-category
+    const existing = await prisma.application.findFirst({
+      where: {
+        name: trimmedName,
+        subCategoryId: subCategoryId,
+      },
     });
 
     if (existing) {
       return NextResponse.json(
-        { error: 'Application with this name already exists' },
+        { error: 'Application with this name already exists for this sub-category' },
         { status: 400 }
       );
     }
@@ -84,7 +114,11 @@ export async function POST(request: NextRequest) {
     const application = await prisma.application.create({
       data: {
         name: trimmedName,
+        subCategoryId: subCategoryId,
         status: 'A',
+      },
+      include: {
+        subCategory: true,
       },
     });
 

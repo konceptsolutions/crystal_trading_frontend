@@ -36,7 +36,8 @@ export async function GET(request: NextRequest) {
     
     // Individual filters take priority over general search
     if (masterPartNo) {
-      where.masterPartNo = { contains: masterPartNo, mode: 'insensitive' };
+      // Use exact match for masterPartNo filter (case-insensitive)
+      where.masterPartNo = { equals: masterPartNo, mode: 'insensitive' };
     }
     if (partNo) {
       where.partNo = { contains: partNo, mode: 'insensitive' };

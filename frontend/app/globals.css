@@ -88,6 +88,61 @@ body {
   /* Smooth scrolling */
   .scroll-smooth {
     scroll-behavior: smooth;
+    -webkit-overflow-scrolling: touch;
+    scroll-padding: 0;
+  }
+
+  /* Smooth horizontal scrolling */
+  .scroll-x-smooth {
+    overflow-x: auto;
+    scroll-behavior: smooth;
+    -webkit-overflow-scrolling: touch;
+    scroll-padding: 0;
+  }
+
+  /* Enhanced smooth scrolling for parts page */
+  .parts-page-container {
+    scroll-behavior: smooth;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .parts-page-container > * {
+    transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1),
+                opacity 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  /* Smooth scrollbar styling */
+  .scroll-smooth::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+
+  .scroll-smooth::-webkit-scrollbar-track {
+    background: #f1f5f9;
+    border-radius: 4px;
+  }
+
+  .scroll-smooth::-webkit-scrollbar-thumb {
+    background: #cbd5e1;
+    border-radius: 4px;
+    transition: background 0.2s ease;
+  }
+
+  .scroll-smooth::-webkit-scrollbar-thumb:hover {
+    background: #94a3b8;
+  }
+
+  /* Smooth horizontal scroll for mobile */
+  @media (max-width: 1279px) {
+    .parts-page-container {
+      scroll-snap-type: y proximity;
+      scroll-padding-top: 1rem;
+    }
+
+    .parts-page-container > * {
+      scroll-snap-align: start;
+      scroll-margin-top: 1rem;
+    }
   }
 
   /* Simple fade-in for tab content */

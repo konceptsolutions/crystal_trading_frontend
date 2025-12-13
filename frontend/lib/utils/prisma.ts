@@ -53,7 +53,23 @@ if (process.env.NODE_ENV === 'development') {
 }
 
 // Create Prisma Client - it will use DATABASE_URL from environment
-export const prisma = globalForPrisma.prisma ?? new PrismaClient({
+// Force recreation if Brand model is missing (for development hot-reload)
+let prismaInstance = globalForPrisma.prisma;
+if (prismaInstance && typeof (prismaInstance as any).brand === 'undefined') {
+  // Brand model is missing, force recreate
+  console.log('[Prisma] Brand model missing, recreating Prisma client...');
+  if (prismaInstance) {
+    try {
+      prismaInstance.$disconnect().catch(() => {});
+    } catch (e) {
+      // Ignore disconnect errors
+    }
+  }
+  globalForPrisma.prisma = undefined;
+  prismaInstance = undefined;
+}
+
+export const prisma = prismaInstance ?? new PrismaClient({
   log: process.env.NODE_ENV === 'development' ? ['error', 'warn'] : ['error'],
   datasources: {
     db: {

@@ -55,6 +55,35 @@ export default function ModelsSelection() {
     return () => clearInterval(interval);
   }, []);
 
+  // Define loadModelsForPart function BEFORE useEffect hooks that use it
+  const loadModelsForPart = useCallback(async (partId: string) => {
+    setModelsLoading(true);
+    try {
+      // Try to fetch from models endpoint first
+      try {
+        const response = await api.get(`/models/part/${partId}`);
+        const modelsData = response.data.models || [];
+        setModels(modelsData);
+      } catch (modelsError) {
+        // Fallback: try to get models from part data
+        try {
+          const partResponse = await api.get(`/parts/${partId}`);
+          const part = partResponse.data?.part;
+          const modelsData = part?.models || [];
+          setModels(modelsData);
+        } catch (partError) {
+          console.error('Failed to load models:', partError);
+          setModels([]);
+        }
+      }
+    } catch (error) {
+      console.error('Failed to load models:', error);
+      setModels([]);
+    } finally {
+      setModelsLoading(false);
+    }
+  }, []);
+
   // Filter parts based on master part number and search
   useEffect(() => {
     let filtered = parts;
@@ -160,34 +189,6 @@ export default function ModelsSelection() {
       setPartsLoading(false);
     }
   };
-
-  const loadModelsForPart = useCallback(async (partId: string) => {
-    setModelsLoading(true);
-    try {
-      // Try to fetch from models endpoint first
-      try {
-        const response = await api.get(`/models/part/${partId}`);
-        const modelsData = response.data.models || [];
-        setModels(modelsData);
-      } catch (modelsError) {
-        // Fallback: try to get models from part data
-        try {
-          const partResponse = await api.get(`/parts/${partId}`);
-          const part = partResponse.data?.part;
-          const modelsData = part?.models || [];
-          setModels(modelsData);
-        } catch (partError) {
-          console.error('Failed to load models:', partError);
-          setModels([]);
-        }
-      }
-    } catch (error) {
-      console.error('Failed to load models:', error);
-      setModels([]);
-    } finally {
-      setModelsLoading(false);
-    }
-  }, []);
 
   const handlePartSelect = (part: Part) => {
     setSelectedPartId(part.id);

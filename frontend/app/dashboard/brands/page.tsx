@@ -5,6 +5,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
+import { Select } from '@/components/ui/select';
 import api from '@/lib/api';
 
 interface Brand {
@@ -38,10 +40,8 @@ export default function BrandsPage() {
     setError(''); // Clear any previous errors
     try {
       const response = await api.get('/brands');
-      
-      // Get the full brand list (not just names)
-      const brandList = response.data.brandList || [];
-      setBrands(brandList);
+      const brands = response.data.brands || [];
+      setBrands(brands);
     } catch (err: any) {
       console.error('Failed to load brands:', err);
       setError(err.response?.data?.error || 'Failed to load brands');
@@ -62,21 +62,12 @@ export default function BrandsPage() {
 
     try {
       setLoading(true);
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/6bf3b9a1-8e8b-47de-9d0f-0d16374a01db',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'frontend/app/dashboard/brands/page.tsx:handleSubmit',message:'Submitting brand',data:{isEditing:!!editingBrand,formData},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'BRANDS_SAVE'})}).catch(()=>{});
-      // #endregion
 
       if (editingBrand) {
         await api.put(`/brands/${editingBrand.id}`, formData);
         setSuccess('Brand updated successfully');
       } else {
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/6bf3b9a1-8e8b-47de-9d0f-0d16374a01db',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'frontend/app/dashboard/brands/page.tsx:handleSubmit_before_post',message:'Before POST request',data:{formData},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'BRANDS_SAVE'})}).catch(()=>{});
-        // #endregion
         await api.post('/brands', formData);
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/6bf3b9a1-8e8b-47de-9d0f-0d16374a01db',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'frontend/app/dashboard/brands/page.tsx:handleSubmit_post_success',message:'POST request succeeded',data:{},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'BRANDS_SAVE'})}).catch(()=>{});
-        // #endregion
         setSuccess('Brand created successfully');
       }
       resetForm();
@@ -84,9 +75,6 @@ export default function BrandsPage() {
       setTimeout(() => setSuccess(''), 3000);
     } catch (err: any) {
       console.error('Failed to save brand:', err);
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/6bf3b9a1-8e8b-47de-9d0f-0d16374a01db',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'frontend/app/dashboard/brands/page.tsx:handleSubmit_error',message:'Failed to save brand',data:{error:err.message,responseError:err.response?.data?.error,status:err.response?.status,responseData:err.response?.data},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'BRANDS_SAVE'})}).catch(()=>{});
-      // #endregion
       setError(err.response?.data?.error || 'Failed to save brand');
     } finally {
       setLoading(false);
@@ -182,15 +170,14 @@ export default function BrandsPage() {
               </div>
               <div>
                 <Label htmlFor="status">Status</Label>
-                <select
+                <Select
                   id="status"
                   value={formData.status}
                   onChange={(e) => setFormData({ ...formData, status: e.target.value })}
-                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   <option value="A">Active</option>
                   <option value="I">Inactive</option>
-                </select>
+                </Select>
               </div>
               <div className="flex gap-2">
                 <Button type="submit" disabled={loading} className="bg-primary-500 hover:bg-primary-600">
@@ -282,4 +269,3 @@ export default function BrandsPage() {
     </div>
   );
 }
-

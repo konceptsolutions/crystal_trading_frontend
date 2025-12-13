@@ -273,22 +273,22 @@ export default function StockMultiDimensionalReport() {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 sm:space-y-6 transition-all duration-300">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div className="flex items-center gap-3">
-          <div className="p-2 bg-primary-100 rounded-lg">
-            <svg className="w-6 h-6 text-primary-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4">
+        <div className="flex items-center gap-2 sm:gap-3">
+          <div className="p-1.5 sm:p-2 bg-primary-100 rounded-lg flex-shrink-0">
+            <svg className="w-5 h-5 sm:w-6 sm:h-6 text-primary-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 3.055A9.001 9.001 0 1020.945 13H11V3.055z" />
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20.488 9H15V3.512A9.025 9.025 0 0120.488 9z" />
             </svg>
           </div>
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">Multi-Dimensional Stock Report</h1>
-            <p className="text-sm text-gray-500">Analyze stock by multiple dimensions</p>
+            <h1 className="text-xl sm:text-2xl font-bold text-gray-900">Multi-Dimensional Stock Report</h1>
+            <p className="text-xs sm:text-sm text-gray-500">Analyze stock by multiple dimensions</p>
           </div>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <Button
             variant="outline"
             onClick={() => handleExport('csv')}

@@ -81,6 +81,7 @@ import accountsRoutes from './server/src/routes/accounts';
 import vehiclesRoutes from './server/src/routes/vehicles';
 import vehicleModelsRoutes from './server/src/routes/vehicle-models';
 import racksRoutes from './server/src/routes/racks';
+import brandsRoutes from './server/src/routes/brands';
 
 const app = next({ dev, hostname, port });
 const handle = app.getRequestHandler();
@@ -129,6 +130,7 @@ app.prepare().then(async () => {
   server.use('/api/parts', partsRoutes);
   server.use('/api/models', modelsRoutes);
   server.use('/api/categories', categoriesRoutes);
+  server.use('/api/brands', brandsRoutes);
   server.use('/api/kits', kitsRoutes);
   server.use('/api/purchase-orders', purchaseOrdersRoutes);
   server.use('/api/suppliers', suppliersRoutes);

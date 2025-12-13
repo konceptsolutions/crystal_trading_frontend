@@ -36,25 +36,37 @@ export default function AutocompleteInput({
   const wrapperRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
+  // Debug: Log when options change
+  useEffect(() => {
+    if (id === 'masterPartNo') {
+      console.log(`[${id}] Options:`, options.length, 'items', options.slice(0, 5));
+      console.log(`[${id}] Filtered options:`, filteredOptions.length, 'items');
+    }
+  }, [options, filteredOptions, id]);
+
   useEffect(() => {
     setInputValue(value);
   }, [value]);
 
+  // Initialize and update filteredOptions when options or inputValue change
   useEffect(() => {
+    // Always update filteredOptions when options change
     if (inputValue.trim() === '') {
+      // Show all options when input is empty
       setFilteredOptions(options);
     } else {
+      // Filter options based on input
       const filtered = options.filter((opt) =>
         opt.toLowerCase().includes(inputValue.toLowerCase())
       );
       // If the exact value doesn't exist and user typed something, show option to add it
-      if (!options.includes(inputValue) && inputValue.trim() !== '') {
+      if (!options.includes(inputValue) && inputValue.trim() !== '' && onAddNew) {
         setFilteredOptions([...filtered, `+ Add "${inputValue}"`]);
       } else {
         setFilteredOptions(filtered);
       }
     }
-  }, [inputValue, options]);
+  }, [inputValue, options, onAddNew]);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -129,6 +141,14 @@ export default function AutocompleteInput({
   };
 
   const handleFocus = () => {
+    // Open dropdown - options will update when they load
+    setIsOpen(true);
+  };
+
+  const handleClick = (e: React.MouseEvent<HTMLInputElement>) => {
+    // Prevent default to avoid losing focus
+    e.stopPropagation();
+    // Open dropdown - options will update when they load
     setIsOpen(true);
   };
 
@@ -145,6 +165,7 @@ export default function AutocompleteInput({
           onChange={handleInputChange}
           onKeyDown={handleKeyDown}
           onFocus={handleFocus}
+          onClick={handleClick}
           placeholder={placeholder}
           required={required}
           disabled={disabled || isAdding}
@@ -158,19 +179,29 @@ export default function AutocompleteInput({
             </svg>
           </div>
         )}
-        {isOpen && filteredOptions.length > 0 && (
-          <div className="absolute z-50 w-full mt-1 bg-white border border-gray-300 rounded-md shadow-lg max-h-60 overflow-auto">
-            {filteredOptions.map((option, index) => (
-              <div
-                key={index}
-                onClick={() => handleSelectOption(option)}
-                className={`px-4 py-2 cursor-pointer hover:bg-primary-50 ${
-                  option.startsWith('+ Add "') ? 'text-primary-600 font-medium border-t border-gray-200' : 'text-gray-900'
-                }`}
-              >
-                {option}
+        {isOpen && (
+          <div className="absolute z-[100] w-full mt-1 bg-white border border-gray-300 rounded-md shadow-lg max-h-60 overflow-auto">
+            {filteredOptions.length > 0 ? (
+              filteredOptions.map((option, index) => (
+                <div
+                  key={index}
+                  onClick={() => handleSelectOption(option)}
+                  className={`px-4 py-2 cursor-pointer hover:bg-primary-50 ${
+                    option.startsWith('+ Add "') ? 'text-primary-600 font-medium border-t border-gray-200' : 'text-gray-900'
+                  }`}
+                >
+                  {option}
+                </div>
+              ))
+            ) : options.length === 0 ? (
+              <div className="px-4 py-2 text-gray-500 text-sm">
+                Loading options...
               </div>
-            ))}
+            ) : (
+              <div className="px-4 py-2 text-gray-500 text-sm">
+                No matches found
+              </div>
+            )}
           </div>
         )}
       </div>

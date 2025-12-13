@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { prisma } from '@/lib/utils/prisma';
 import { verifyToken } from '@/lib/middleware/auth';
 
 export const revalidate = 0;
@@ -13,26 +14,17 @@ export async function GET(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    // Forward request to backend server
-    const backendUrl = `${process.env.BACKEND_URL || 'http://localhost:5000'}/api/brands/${params.id}`;
-    
-    const response = await fetch(backendUrl, {
-      method: 'GET',
-      headers: {
-        'Authorization': request.headers.get('Authorization') || '',
-        'Content-Type': 'application/json',
-      },
+    const brand = await prisma.brand.findUnique({
+      where: { id: params.id },
     });
 
-    const data = await response.json();
-
-    if (!response.ok) {
-      return NextResponse.json(data, { status: response.status });
+    if (!brand) {
+      return NextResponse.json({ error: 'Brand not found' }, { status: 404 });
     }
 
-    return NextResponse.json(data);
+    return NextResponse.json({ brand });
   } catch (error: any) {
-    console.error('Brands API error:', error);
+    console.error('Brand fetch error:', error);
     return NextResponse.json(
       { error: 'Failed to fetch brand', message: error.message },
       { status: 500 }
@@ -44,35 +36,39 @@ export async function PUT(
   request: NextRequest,
   { params }: { params: { id: string } }
 ) {
+  let body: any;
+  try {
+    body = await request.json();
+  } catch (error) {
+    return NextResponse.json({ error: 'Invalid request body' }, { status: 400 });
+  }
+
   try {
     const user = verifyToken(request);
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const body = await request.json();
+    const { name, status } = body;
 
-    // Forward request to backend server
-    const backendUrl = `${process.env.BACKEND_URL || 'http://localhost:5000'}/api/brands/${params.id}`;
-    
-    const response = await fetch(backendUrl, {
-      method: 'PUT',
-      headers: {
-        'Authorization': request.headers.get('Authorization') || '',
-        'Content-Type': 'application/json',
+    const existingBrand = await prisma.brand.findUnique({ where: { id: params.id } });
+    if (!existingBrand) return NextResponse.json({ error: 'Brand not found' }, { status: 404 });
+
+    const brand = await prisma.brand.update({
+      where: { id: params.id },
+      data: {
+        ...(name !== undefined ? { name: String(name).trim() } : {}),
+        ...(status !== undefined ? { status } : {}),
       },
-      body: JSON.stringify(body),
     });
 
-    const data = await response.json();
-
-    if (!response.ok) {
-      return NextResponse.json(data, { status: response.status });
-    }
-
-    return NextResponse.json(data);
+    return NextResponse.json({ brand });
   } catch (error: any) {
-    console.error('Brands API error:', error);
+    console.error('Brand update error:', error);
+
+    if (error.code === 'P2025') return NextResponse.json({ error: 'Brand not found' }, { status: 404 });
+    if (error.code === 'P2002') return NextResponse.json({ error: 'Brand with this name already exists' }, { status: 400 });
+
     return NextResponse.json(
       { error: 'Failed to update brand', message: error.message },
       { status: 500 }
@@ -90,30 +86,35 @@ export async function DELETE(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    // Forward request to backend server
-    const backendUrl = `${process.env.BACKEND_URL || 'http://localhost:5000'}/api/brands/${params.id}`;
-    
-    const response = await fetch(backendUrl, {
-      method: 'DELETE',
-      headers: {
-        'Authorization': request.headers.get('Authorization') || '',
-        'Content-Type': 'application/json',
-      },
+    const brand = await prisma.brand.findUnique({
+      where: { id: params.id },
     });
 
-    const data = await response.json();
-
-    if (!response.ok) {
-      return NextResponse.json(data, { status: response.status });
+    if (!brand) {
+      return NextResponse.json({ error: 'Brand not found' }, { status: 404 });
     }
 
-    return NextResponse.json(data);
+    const partsCount = await prisma.part.count({ where: { brand: brand.name } });
+    if (partsCount > 0) {
+      return NextResponse.json(
+        { error: `Cannot delete brand. It is used by ${partsCount} part(s).` },
+        { status: 400 }
+      );
+    }
+
+    await prisma.brand.delete({
+      where: { id: params.id },
+    });
+
+    return NextResponse.json({ message: 'Brand deleted successfully' });
   } catch (error: any) {
-    console.error('Brands API error:', error);
+    console.error('Brand delete error:', error);
+
+    if (error.code === 'P2025') return NextResponse.json({ error: 'Brand not found' }, { status: 404 });
+
     return NextResponse.json(
       { error: 'Failed to delete brand', message: error.message },
       { status: 500 }
     );
   }
 }
-

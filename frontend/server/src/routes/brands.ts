@@ -1,6 +1,6 @@
 import express from 'express';
 import { z } from 'zod';
-import { prisma } from '../utils/prisma';
+import { prisma } from '../../../lib/utils/prisma';
 import { verifyToken, AuthRequest } from '../middleware/auth';
 
 const router = express.Router();
@@ -166,3 +166,5 @@ router.delete('/:id', async (req: AuthRequest, res) => {
 });
 
 export default router;
+
+

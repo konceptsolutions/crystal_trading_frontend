@@ -269,20 +269,33 @@ export default function PartsPage() {
   return (
     <div 
       ref={containerRef}
-      className="h-[calc(100vh-120px)] flex flex-col xl:flex-row p-2 sm:p-3 md:p-4 bg-gray-50 overflow-hidden w-full"
-      style={{ overflowX: 'hidden', maxWidth: '100%', boxSizing: 'border-box' }}
+      className="flex flex-col xl:flex-row p-2 sm:p-3 md:p-4 bg-gray-50 w-full scroll-smooth parts-page-container"
+      style={{ 
+        maxWidth: '100%', 
+        boxSizing: 'border-box',
+        height: isDesktop ? 'calc(100vh - 120px)' : 'auto',
+        minHeight: isDesktop ? 'calc(100vh - 120px)' : '100vh',
+        overflow: isDesktop ? 'hidden' : 'visible',
+        scrollBehavior: 'smooth',
+        WebkitOverflowScrolling: 'touch'
+      }}
     >
       {/* Left Panel - Part/Kit Form with Tabs */}
       <div 
-        className="order-1 xl:order-1 flex flex-col h-full overflow-hidden flex-shrink-0 w-full xl:w-auto"
+        className="order-1 xl:order-1 flex flex-col overflow-hidden flex-shrink-0 w-full xl:w-auto mb-4 xl:mb-0 scroll-smooth"
         style={{ 
-          flex: isDesktop ? `0 0 ${Math.min(45, leftWidth)}%` : '0 0 100%',
+          flex: isDesktop ? `0 0 ${Math.min(45, leftWidth)}%` : 'none',
+          height: isDesktop ? '100%' : 'auto',
+          maxHeight: isDesktop ? '100%' : '80vh',
           maxWidth: isDesktop ? '45%' : '100%',
           minWidth: 0,
-          boxSizing: 'border-box'
+          boxSizing: 'border-box',
+          scrollBehavior: 'smooth',
+          WebkitOverflowScrolling: 'touch',
+          scrollSnapAlign: isDesktop ? 'none' : 'start'
         }}
       >
-        <div className="bg-white rounded-xl shadow-soft border border-gray-200 flex flex-col h-full overflow-hidden">
+        <div className="bg-white rounded-xl shadow-soft border border-gray-200 flex flex-col overflow-hidden" style={{ height: isDesktop ? '100%' : 'auto', maxHeight: isDesktop ? '100%' : '80vh' }}>
           {/* Tabs */}
           <div className="flex border-b border-gray-200">
             <button
@@ -350,14 +363,18 @@ export default function PartsPage() {
 
       {/* Middle Panel - Models (Fixed Size, Not Resizable) */}
       <div 
-        className="h-full overflow-y-auto scroll-smooth order-3 xl:order-2 flex-shrink-0 w-full xl:w-[280px]"
+        className="overflow-y-auto overflow-x-auto scroll-smooth order-3 xl:order-2 flex-shrink-0 w-full xl:w-[280px] mb-4 xl:mb-0"
         style={{ 
           width: isDesktop ? '280px' : '100%',
+          height: isDesktop ? '100%' : 'auto',
+          maxHeight: isDesktop ? '100%' : '60vh',
           minWidth: isDesktop ? '280px' : '0',
           maxWidth: isDesktop ? '280px' : '100%',
           scrollBehavior: 'smooth',
+          WebkitOverflowScrolling: 'touch',
           boxSizing: 'border-box',
-          flexShrink: 0
+          flexShrink: 0,
+          scrollSnapAlign: isDesktop ? 'none' : 'start'
         }}
       >
         <ModelsPanel 
@@ -384,15 +401,20 @@ export default function PartsPage() {
 
       {/* Right Panel - Parts/Kits List with Tabs */}
       <div 
-        className="h-full overflow-hidden order-2 xl:order-3 flex flex-col min-w-0 w-full xl:w-auto"
+        className="overflow-hidden order-2 xl:order-3 flex flex-col min-w-0 w-full xl:w-auto scroll-smooth"
         style={{ 
-          flex: isDesktop ? `1 1 0` : '0 0 100%',
+          flex: isDesktop ? `1 1 0` : 'none',
+          height: isDesktop ? '100%' : 'auto',
+          maxHeight: isDesktop ? '100%' : '80vh',
           minWidth: 0,
           maxWidth: isDesktop ? 'none' : '100%',
-          boxSizing: 'border-box'
+          boxSizing: 'border-box',
+          scrollBehavior: 'smooth',
+          WebkitOverflowScrolling: 'touch',
+          scrollSnapAlign: isDesktop ? 'none' : 'start'
         }}
       >
-        <Card className="h-full bg-white border border-gray-200 shadow-medium rounded-lg overflow-hidden flex flex-col w-full min-w-0">
+        <Card className="bg-white border border-gray-200 shadow-medium rounded-lg overflow-hidden flex flex-col w-full min-w-0" style={{ height: isDesktop ? '100%' : 'auto', maxHeight: isDesktop ? '100%' : '80vh' }}>
           {/* Tabs */}
           <div className="flex border-b border-gray-200 bg-white flex-shrink-0">
             <button
@@ -418,7 +440,7 @@ export default function PartsPage() {
           </div>
 
           {/* Tab Content */}
-          <div className="flex-1 overflow-y-auto tab-fade scroll-smooth" style={{ scrollBehavior: 'smooth' }}>
+          <div className="flex-1 overflow-y-auto overflow-x-auto tab-fade scroll-smooth" style={{ scrollBehavior: 'smooth', WebkitOverflowScrolling: 'touch', scrollPadding: '0' }}>
             {activeListTab === 'parts' ? (
               <PartsTable
                 onSelectPart={handleSelectPart}

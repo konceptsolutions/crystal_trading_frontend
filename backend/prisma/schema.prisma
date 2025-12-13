@@ -554,3 +554,49 @@ model Application {
   @@index([name])
   @@index([status])
 }
+
+// Accounts Management Models
+model MainGroup {
+  id        String     @id @default(cuid())
+  code      Int        @unique
+  name      String
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+  subGroups SubGroup[]
+
+  @@index([code])
+  @@index([name])
+}
+
+model SubGroup {
+  id          String    @id @default(cuid())
+  mainGroupId String
+  code        String
+  name        String
+  status      String    @default("Active")
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  mainGroup   MainGroup @relation(fields: [mainGroupId], references: [id], onDelete: Cascade)
+  accounts    Account[]
+
+  @@unique([code, mainGroupId])
+  @@index([mainGroupId])
+  @@index([code])
+  @@index([name])
+}
+
+model Account {
+  id         String   @id @default(cuid())
+  subGroupId String
+  code       String   @unique
+  name       String
+  status     String   @default("Active")
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  subGroup   SubGroup @relation(fields: [subGroupId], references: [id], onDelete: Cascade)
+
+  @@index([subGroupId])
+  @@index([code])
+  @@index([name])
+  @@index([status])
+}

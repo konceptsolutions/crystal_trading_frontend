@@ -295,21 +295,21 @@ export default function StockBalanceValuation() {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 sm:space-y-6 transition-all duration-300">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div className="flex items-center gap-3">
-          <div className="p-2 bg-primary-100 rounded-lg">
-            <svg className="w-6 h-6 text-primary-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4">
+        <div className="flex items-center gap-2 sm:gap-3">
+          <div className="p-1.5 sm:p-2 bg-primary-100 rounded-lg flex-shrink-0">
+            <svg className="w-5 h-5 sm:w-6 sm:h-6 text-primary-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
             </svg>
           </div>
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">Stock Balance & Valuation</h1>
-            <p className="text-sm text-gray-500">View inventory valuation and stock levels</p>
+            <h1 className="text-xl sm:text-2xl font-bold text-gray-900">Stock Balance & Valuation</h1>
+            <p className="text-xs sm:text-sm text-gray-500">View inventory valuation and stock levels</p>
           </div>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <Button
             variant="outline"
             onClick={() => handleExport('csv')}
@@ -408,8 +408,8 @@ export default function StockBalanceValuation() {
 
       {/* Filters */}
       <Card className="shadow-md">
-        <CardContent className="p-4">
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+        <CardContent className="p-3 sm:p-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 sm:gap-4">
             <div className="lg:col-span-2">
               <Label className="text-sm font-medium text-gray-700">Search</Label>
               <div className="relative mt-1">

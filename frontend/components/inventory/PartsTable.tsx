@@ -94,8 +94,8 @@ export default function PartsTable({ onSelectPart, selectedPartId, refreshTrigge
         </div>
       </CardHeader>
       <CardContent className="p-0 flex-1 flex flex-col overflow-hidden bg-white w-full max-w-full">
-        <div className="flex-1 overflow-y-auto scrollbar-hide scroll-smooth overflow-x-hidden w-full min-w-0">
-          <Table className="w-full">
+        <div className="flex-1 overflow-y-auto overflow-x-auto scrollbar-hide scroll-smooth w-full min-w-0" style={{ scrollBehavior: 'smooth', WebkitOverflowScrolling: 'touch', scrollPadding: '0' }}>
+          <Table className="w-full min-w-max">
             <TableHeader>
               <TableRow className="bg-gray-50 border-b border-gray-200">
                 <TableHead className="font-semibold text-gray-900 py-1 px-2 text-left min-w-[120px]">Part No</TableHead>

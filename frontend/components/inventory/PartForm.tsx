@@ -92,11 +92,16 @@ export default function PartForm({ part, onSave, onDelete, models = [] }: PartFo
   const [error, setError] = useState('');
   
   // Options for autocomplete fields
+  const [masterPartNoOptions, setMasterPartNoOptions] = useState<string[]>([]);
+  const [masterPartNoLoading, setMasterPartNoLoading] = useState(false);
+  const [partNoOptions, setPartNoOptions] = useState<string[]>([]);
+  const [partNoLoading, setPartNoLoading] = useState(false);
   const [brandOptions, setBrandOptions] = useState<string[]>([]);
   const [categoryOptions, setCategoryOptions] = useState<string[]>([]);
   const [subCategoryOptions, setSubCategoryOptions] = useState<string[]>([]);
   const [applicationOptions, setApplicationOptions] = useState<string[]>([]);
   const [selectedMainCategoryId, setSelectedMainCategoryId] = useState<string | null>(null);
+  const [selectedSubCategoryId, setSelectedSubCategoryId] = useState<string | null>(null);
 
   // Load draft from localStorage when creating a new part
   useEffect(() => {
@@ -223,14 +228,50 @@ export default function PartForm({ part, onSave, onDelete, models = [] }: PartFo
       loadSubCategories(selectedMainCategoryId);
     } else {
       setSubCategoryOptions([]);
+      setSelectedSubCategoryId(null);
+      setApplicationOptions([]);
     }
   }, [selectedMainCategoryId]);
 
+  // Load applications when sub-category changes
+  useEffect(() => {
+    if (selectedSubCategoryId) {
+      loadApplications(selectedSubCategoryId);
+    } else {
+      setApplicationOptions([]);
+    }
+  }, [selectedSubCategoryId]);
+
+  // Load part numbers when master part number changes
+  useEffect(() => {
+    // Clear options first
+    setPartNoOptions([]);
+    
+    if (formData.masterPartNo && formData.masterPartNo.trim() !== '') {
+      // Store the value to avoid undefined issues in setTimeout
+      const masterPartNoValue = formData.masterPartNo.trim();
+      // Small delay to ensure master part number is fully set
+      const timer = setTimeout(() => {
+        loadPartNumbersByMasterPartNo(masterPartNoValue);
+      }, 100);
+      
+      return () => clearTimeout(timer);
+    }
+  }, [formData.masterPartNo]);
+
+
   const loadOptions = async () => {
     try {
-      // Load brands
-      const brandsRes = await api.get('/brands');
-      setBrandOptions(brandsRes.data.brands || []);
+      // Load all brands (similar to categories)
+      const brandsRes = await api.get('/brands?status=A');
+      const brands = brandsRes.data.brands || [];
+      // Backward-compatible: support both old API (string[]) and new API (Brand[])
+      const brandNames = Array.isArray(brands)
+        ? brands
+            .map((b: any) => (typeof b === 'string' ? b : b?.name))
+            .filter(Boolean)
+        : [];
+      setBrandOptions(brandNames);
 
       // Load main categories
       const categoriesRes = await api.get('/categories?type=main&status=A');
@@ -239,9 +280,38 @@ export default function PartForm({ part, onSave, onDelete, models = [] }: PartFo
         .filter((name: string) => name);
       setCategoryOptions(mainCategories);
 
-      // Load applications
-      const applicationsRes = await api.get('/applications');
-      setApplicationOptions(applicationsRes.data.applications || []);
+      // Applications will be loaded when sub-category is selected
+
+      // Load master part numbers from parts (same approach as parts-list page)
+      setMasterPartNoLoading(true);
+      try {
+        console.log('🔄 Loading master part numbers...');
+        const response = await api.get('/parts?limit=10000');
+        console.log('📦 API Response:', response.data);
+        const allParts = response.data.parts || [];
+        console.log('📋 All parts count:', allParts.length);
+        
+        const masterPartNos = Array.from(
+          new Set(allParts.map((p: Part) => p.masterPartNo).filter(Boolean))
+        ).sort() as string[];
+        
+        console.log('✅ Master Part Nos loaded:', masterPartNos.length, 'unique values');
+        if (masterPartNos.length > 0) {
+          console.log('📝 Sample:', masterPartNos.slice(0, 5));
+        }
+        setMasterPartNoOptions(masterPartNos);
+      } catch (error: any) {
+        console.error('❌ Failed to load master part numbers:', error);
+        console.error('Error details:', {
+          message: error.message,
+          response: error.response?.data,
+          status: error.response?.status
+        });
+        setMasterPartNoOptions([]);
+      } finally {
+        setMasterPartNoLoading(false);
+        console.log('🏁 Finished loading master part numbers');
+      }
     } catch (error) {
       console.error('Failed to load options:', error);
     }
@@ -254,11 +324,76 @@ export default function PartForm({ part, onSave, onDelete, models = [] }: PartFo
         .map((cat: any) => cat.name)
         .filter((name: string) => name);
       setSubCategoryOptions(subCategories);
+      // Reset sub-category ID when categories change
+      setSelectedSubCategoryId(null);
     } catch (error) {
       console.error('Failed to load subcategories:', error);
       setSubCategoryOptions([]);
+      setSelectedSubCategoryId(null);
     }
   };
+
+  const loadApplications = async (subCategoryId: string) => {
+    try {
+      const response = await api.get(`/applications?subCategoryId=${subCategoryId}&status=A`);
+      const applications = response.data.applications || [];
+      setApplicationOptions(applications);
+    } catch (error) {
+      console.error('Failed to load applications:', error);
+      setApplicationOptions([]);
+    }
+  };
+
+  const loadPartNumbersByMasterPartNo = async (masterPartNo: string) => {
+    if (!masterPartNo || masterPartNo.trim() === '') {
+      setPartNoOptions([]);
+      return;
+    }
+    
+    setPartNoLoading(true);
+    try {
+      // Fetch all parts
+      const response = await api.get(`/parts?limit=10000`);
+      const allParts = response.data.parts || [];
+      
+      // Normalize the master part number for comparison
+      const masterPartNoNormalized = masterPartNo.trim().toLowerCase();
+      
+      // Filter parts that have EXACT match with the selected master part number (case-insensitive)
+      const filteredParts = allParts.filter((p: Part) => {
+        if (!p.masterPartNo) return false;
+        const partMasterPartNo = String(p.masterPartNo).trim().toLowerCase();
+        return partMasterPartNo === masterPartNoNormalized;
+      });
+      
+      // Extract unique part numbers ONLY from filtered parts
+      const partNos = Array.from(
+        new Set(filteredParts.map((p: Part) => p.partNo).filter(Boolean))
+      ).sort() as string[];
+      
+      console.log('🔍 Filtering Part Numbers:');
+      console.log('  Master Part No:', masterPartNo);
+      console.log('  Normalized:', masterPartNoNormalized);
+      console.log('  Total parts in DB:', allParts.length);
+      console.log('  Parts with exact match:', filteredParts.length);
+      console.log('  Matching part numbers:', partNos);
+      
+      // Verify each part number belongs to the correct master part
+      filteredParts.forEach((p: Part) => {
+        if (p.masterPartNo && p.partNo) {
+          console.log(`  ✓ ${p.partNo} -> ${p.masterPartNo}`);
+        }
+      });
+      
+      setPartNoOptions(partNos);
+    } catch (error: any) {
+      console.error('❌ Failed to load part numbers:', error);
+      setPartNoOptions([]);
+    } finally {
+      setPartNoLoading(false);
+    }
+  };
+
 
   // Find main category ID when main category name changes
   useEffect(() => {
@@ -266,8 +401,18 @@ export default function PartForm({ part, onSave, onDelete, models = [] }: PartFo
       findMainCategoryId(formData.mainCategory);
     } else {
       setSelectedMainCategoryId(null);
+      setSelectedSubCategoryId(null);
     }
   }, [formData.mainCategory]);
+
+  // Find sub-category ID when sub-category name changes
+  useEffect(() => {
+    if (formData.subCategory && selectedMainCategoryId) {
+      findSubCategoryId(formData.subCategory, selectedMainCategoryId);
+    } else {
+      setSelectedSubCategoryId(null);
+    }
+  }, [formData.subCategory, selectedMainCategoryId]);
 
   const findMainCategoryId = async (categoryName: string) => {
     try {
@@ -285,9 +430,33 @@ export default function PartForm({ part, onSave, onDelete, models = [] }: PartFo
     }
   };
 
-  const handleAddBrand = async (brandName: string) => {
+  const findSubCategoryId = async (subCategoryName: string, parentId: string) => {
     try {
-      await api.post('/brands', { name: brandName });
+      const response = await api.get(`/categories?type=sub&parentId=${parentId}&status=A`);
+      const subCategory = (response.data.categories || []).find(
+        (cat: any) => cat.name === subCategoryName
+      );
+      if (subCategory) {
+        setSelectedSubCategoryId(subCategory.id);
+      } else {
+        setSelectedSubCategoryId(null);
+      }
+    } catch (error) {
+      console.error('Failed to find sub-category ID:', error);
+    }
+  };
+
+  const handleAddBrand = async (brandName: string) => {
+    // Require Part No before allowing brand creation from Part Entry
+    // (same idea as Part No requiring Master Part #)
+    if (!formData.partNo || formData.partNo.trim() === '') {
+      throw new Error('Please enter Part No/SSP# first');
+    }
+    try {
+      const response = await api.post('/brands', {
+        name: brandName,
+        status: 'A',
+      });
       setBrandOptions((prev) => [...prev.filter((b) => b !== brandName), brandName].sort());
     } catch (error: any) {
       throw new Error(error.response?.data?.error || 'Failed to add brand');
@@ -327,8 +496,14 @@ export default function PartForm({ part, onSave, onDelete, models = [] }: PartFo
   };
 
   const handleAddApplication = async (applicationName: string) => {
+    if (!selectedSubCategoryId) {
+      throw new Error('Please select a sub-category first before adding an application');
+    }
     try {
-      await api.post('/applications', { name: applicationName });
+      await api.post('/applications', { 
+        name: applicationName,
+        subCategoryId: selectedSubCategoryId,
+      });
       setApplicationOptions((prev) => [...prev.filter((a) => a !== applicationName), applicationName].sort());
     } catch (error: any) {
       throw new Error(error.response?.data?.error || 'Failed to add application');
@@ -417,33 +592,6 @@ export default function PartForm({ part, onSave, onDelete, models = [] }: PartFo
     setLoading(true);
 
     try {
-      // Auto-create brand if it doesn't exist and brand is provided
-      if (formData.brand && formData.brand.trim()) {
-        const brandName = formData.brand.trim();
-        const brandExists = brandOptions.some(b => b.toLowerCase() === brandName.toLowerCase());
-        
-        if (!brandExists) {
-          try {
-            await api.post('/brands', { name: brandName, status: 'A' });
-            // Refresh brand options
-            const brandsRes = await api.get('/brands');
-            setBrandOptions(brandsRes.data.brands || []);
-          } catch (brandError: any) {
-            // If brand already exists (race condition), that's fine - just continue
-            if (!brandError.response?.data?.error?.includes('already exists')) {
-              console.warn('Failed to auto-create brand:', brandError);
-            }
-            // Refresh brand options anyway to get the latest list
-            try {
-              const brandsRes = await api.get('/brands');
-              setBrandOptions(brandsRes.data.brands || []);
-            } catch (e) {
-              // Ignore refresh errors
-            }
-          }
-        }
-      }
-
       // Clean up form data - convert empty strings to undefined for optional fields
       const cleanedData: any = {
         partNo: formData.partNo.trim(),
@@ -656,29 +804,26 @@ export default function PartForm({ part, onSave, onDelete, models = [] }: PartFo
             </div>
             {/* First Line: Master Part No, Part No/SSP#, Brand */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-              <div className="space-y-2">
-                <Label htmlFor="masterPartNo" className="text-sm font-semibold text-gray-700 block h-5 flex items-center">
-                  Master Part #
-                </Label>
-                <Input
+              <div>
+                <AutocompleteInput
                   id="masterPartNo"
+                  label="Master Part #"
                   value={formData.masterPartNo || ''}
-                  onChange={(e) => handleChange('masterPartNo', e.target.value)}
-                  className="border-gray-300 focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20 h-11"
-                  placeholder="Enter master part number"
+                  onChange={(value) => handleChange('masterPartNo', value)}
+                  options={masterPartNoOptions}
+                  placeholder={masterPartNoLoading ? "Loading options..." : "Type to search or enter new"}
                 />
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="partNo" className="text-sm font-semibold text-gray-700 block h-5 flex items-center">
-                  Part No/SSP# <span className="text-red-500 font-bold">*</span>
-                </Label>
-                <Input
+              <div>
+                <AutocompleteInput
                   id="partNo"
+                  label="Part No/SSP#"
                   value={formData.partNo}
-                  onChange={(e) => handleChange('partNo', e.target.value)}
-                  required
-                  className={`border-gray-300 focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20 h-11 ${error && !formData.partNo ? 'border-red-500' : ''}`}
-                  placeholder="Enter part number"
+                  onChange={(value) => handleChange('partNo', value)}
+                  options={partNoOptions}
+                  placeholder={partNoLoading ? "Loading options..." : formData.masterPartNo ? "Type to search or enter new" : "Select master part number first"}
+                  required={true}
+                  disabled={!formData.masterPartNo || formData.masterPartNo.trim() === ''}
                 />
               </div>
               <div className="space-y-2">
@@ -689,7 +834,12 @@ export default function PartForm({ part, onSave, onDelete, models = [] }: PartFo
                   onChange={(value) => handleChange('brand', value)}
                   onAddNew={handleAddBrand}
                   options={brandOptions}
-                  placeholder="Type to search or press Enter to add new"
+                  placeholder={
+                    !formData.partNo || formData.partNo.trim() === ''
+                      ? 'Enter Part No/SSP# first'
+                      : 'Type to search or press Enter to add new'
+                  }
+                  disabled={!formData.partNo || formData.partNo.trim() === ''}
                 />
               </div>
             </div>
@@ -736,7 +886,8 @@ export default function PartForm({ part, onSave, onDelete, models = [] }: PartFo
                 onChange={(value) => handleChange('application', value)}
                 onAddNew={handleAddApplication}
                 options={applicationOptions}
-                placeholder="Type to search or press Enter to add new"
+                placeholder={selectedSubCategoryId ? "Type to search or press Enter to add new" : "Please select a sub-category first"}
+                disabled={!selectedSubCategoryId || !formData.subCategory || formData.subCategory.trim() === ''}
               />
             </div>
           </div>

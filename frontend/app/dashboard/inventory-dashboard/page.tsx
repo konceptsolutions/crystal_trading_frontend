@@ -344,13 +344,13 @@ export default function InventoryDashboard() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 p-4 sm:p-6">
-      <div className="max-w-7xl mx-auto space-y-6">
+    <div className="min-h-screen bg-gray-50 p-3 sm:p-4 md:p-6 transition-all duration-300">
+      <div className="max-w-7xl mx-auto space-y-4 sm:space-y-6">
         {/* Header */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4 mb-4 sm:mb-6">
           <div>
-            <h1 className="text-3xl font-bold text-gray-900 mb-1">Inventory Dashboard</h1>
-            <p className="text-gray-600">Real-time overview of your inventory operations</p>
+            <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-1">Inventory Dashboard</h1>
+            <p className="text-sm sm:text-base text-gray-600">Real-time overview of your inventory operations</p>
             {lastUpdated && (
               <p className="text-xs text-gray-400 mt-1">
                 Last updated: {lastUpdated.toLocaleString()}
@@ -375,7 +375,7 @@ export default function InventoryDashboard() {
         )}
 
         {/* Main Stats Cards */}
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 sm:gap-4">
           <Card className="bg-gradient-to-br from-primary-50 to-orange-50 border-primary-200">
             <CardContent className="p-4">
               <div className="flex items-center justify-between">

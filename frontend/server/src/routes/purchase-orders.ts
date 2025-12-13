@@ -6,7 +6,8 @@ import { verifyToken, AuthRequest } from '../middleware/auth';
 const router = express.Router();
 
 const purchaseOrderSchema = z.object({
-  poNo: z.string().min(1, 'PO number is required'),
+  // Optional - will be auto-generated if not provided
+  poNo: z.string().optional(),
   type: z.enum(['purchase', 'direct']),
   supplierId: z.string().optional(),
   supplierName: z.string().min(1, 'Supplier name is required'),
@@ -16,6 +17,7 @@ const purchaseOrderSchema = z.object({
   orderDate: z.string().optional(),
   expectedDate: z.string().optional(),
   status: z.enum(['draft', 'pending', 'approved', 'received', 'cancelled']).optional(),
+  paymentMethod: z.enum(['cash', 'bank_transfer', 'cheque', 'credit_card', 'other']).optional(),
   subTotal: z.number().optional(),
   tax: z.number().optional(),
   discount: z.number().optional(),
@@ -94,6 +96,22 @@ router.get('/', async (req: AuthRequest, res) => {
   }
 });
 
+// Get next PO number (for frontend preview)
+// IMPORTANT: This route must be defined BEFORE /:id to avoid route conflicts
+router.get('/next-po-number/:type', async (req: AuthRequest, res) => {
+  try {
+    const type = req.params.type as 'purchase' | 'direct';
+    if (!['purchase', 'direct'].includes(type)) {
+      return res.status(400).json({ error: 'Invalid type. Must be "purchase" or "direct"' });
+    }
+    const nextPONumber = await generatePONumber(type);
+    res.json({ nextPONumber });
+  } catch (error: any) {
+    console.error('Get next PO number error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 // Get single purchase order
 router.get('/:id', async (req: AuthRequest, res) => {
   try {
@@ -120,14 +138,102 @@ router.get('/:id', async (req: AuthRequest, res) => {
   }
 });
 
+// Helper function to generate PO number
+async function generatePONumber(type: 'purchase' | 'direct'): Promise<string> {
+  const prefix = type === 'direct' ? 'DPO' : 'PO';
+  const year = new Date().getFullYear();
+
+  // Get the last PO number for this type and year
+  const lastPO = await prisma.purchaseOrder.findFirst({
+    where: {
+      poNo: {
+        startsWith: `${prefix}-${year}-`,
+      },
+    },
+    orderBy: {
+      createdAt: 'desc',
+    },
+  });
+
+  let nextNumber = 1;
+  if (lastPO) {
+    const match = lastPO.poNo.match(/-(\d+)$/);
+    if (match && match[1]) {
+      const parsedNumber = parseInt(match[1], 10);
+      if (!isNaN(parsedNumber) && parsedNumber > 0) {
+        nextNumber = parsedNumber + 1;
+      } else {
+        // If regex matched but number is invalid, try to find the highest number
+        console.warn(`Invalid PO number format found: ${lastPO.poNo}. Attempting to find highest number.`);
+        const allPOs = await prisma.purchaseOrder.findMany({
+          where: {
+            poNo: {
+              startsWith: `${prefix}-${year}-`,
+            },
+          },
+          select: {
+            poNo: true,
+          },
+        });
+
+        let maxNumber = 0;
+        for (const po of allPOs) {
+          const poMatch = po.poNo.match(/-(\d+)$/);
+          if (poMatch && poMatch[1]) {
+            const num = parseInt(poMatch[1], 10);
+            if (!isNaN(num) && num > maxNumber) {
+              maxNumber = num;
+            }
+          }
+        }
+        nextNumber = maxNumber > 0 ? maxNumber + 1 : 1;
+      }
+    } else {
+      // Regex failed - find the highest number from all POs of this type/year
+      console.warn(`Could not extract number from PO: ${lastPO.poNo}. Searching for highest number.`);
+      const allPOs = await prisma.purchaseOrder.findMany({
+        where: {
+          poNo: {
+            startsWith: `${prefix}-${year}-`,
+          },
+        },
+        select: {
+          poNo: true,
+        },
+      });
+
+      let maxNumber = 0;
+      for (const po of allPOs) {
+        const poMatch = po.poNo.match(/-(\d+)$/);
+        if (poMatch && poMatch[1]) {
+          const num = parseInt(poMatch[1], 10);
+          if (!isNaN(num) && num > maxNumber) {
+            maxNumber = num;
+          }
+        }
+      }
+      nextNumber = maxNumber > 0 ? maxNumber + 1 : 1;
+    }
+  }
+
+  return `${prefix}-${year}-${String(nextNumber).padStart(3, '0')}`;
+}
+
 // Create purchase order
 router.post('/', async (req: AuthRequest, res) => {
   try {
     const data = purchaseOrderSchema.parse(req.body);
 
+    // Auto-generate PO number if not provided
+    // Handle null, undefined, or empty string safely
+    let poNo = data.poNo;
+    if (poNo == null || (typeof poNo === 'string' && poNo.trim() === '')) {
+      poNo = await generatePONumber(data.type);
+    }
+
     // Check if PO number already exists
     const existing = await prisma.purchaseOrder.findUnique({
-      where: { poNo: data.poNo },
+      where: { poNo },
     });
 
     if (existing) {
@@ -157,7 +263,7 @@ router.post('/', async (req: AuthRequest, res) => {
 
     const purchaseOrder = await prisma.purchaseOrder.create({
       data: {
-        poNo: data.poNo,
+        poNo: poNo,
         type: data.type,
         supplierId: data.type === 'purchase' ? (data.supplierId || null) : null,
         supplierName: data.supplierName,
@@ -167,6 +273,7 @@ router.post('/', async (req: AuthRequest, res) => {
         orderDate,
         expectedDate,
         status: data.status || 'draft',
+        paymentMethod: data.paymentMethod || null,
         subTotal,
         tax,
         discount,

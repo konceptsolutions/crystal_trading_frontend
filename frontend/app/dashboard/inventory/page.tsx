@@ -159,15 +159,15 @@ export default function InventoryPage() {
   ];
 
   return (
-    <div className="min-h-[calc(100vh-120px)] bg-gray-50 p-2 sm:p-3 md:p-4 lg:p-6">
+    <div className="min-h-[calc(100vh-120px)] bg-gray-50 p-2 sm:p-3 md:p-4 lg:p-6 transition-all duration-300">
       <div className="mb-3 sm:mb-4 md:mb-6">
-        <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-1 sm:mb-2">Inventory Management</h1>
-        <p className="text-sm sm:text-base text-gray-600">Manage your inventory operations and track stock levels</p>
+        <h1 className="text-xl sm:text-2xl md:text-3xl font-bold text-gray-900 mb-1 sm:mb-2 transition-all duration-200">Inventory Management</h1>
+        <p className="text-xs sm:text-sm md:text-base text-gray-600">Manage your inventory operations and track stock levels</p>
       </div>
 
       {/* Horizontal Tabs Bar - Matching Parts Management Style */}
-      <div className="bg-white rounded-xl shadow-soft border border-gray-200 mb-3 sm:mb-4 md:mb-6 overflow-hidden">
-        <div className="flex border-b border-gray-200 overflow-x-auto scrollbar-hide">
+      <div className="bg-white rounded-lg sm:rounded-xl shadow-soft border border-gray-200 mb-3 sm:mb-4 md:mb-6 overflow-hidden">
+        <div className="flex border-b border-gray-200 overflow-x-auto scrollbar-hide scroll-smooth">
           <div className="flex min-w-full">
             {menuItems.map((item) => {
               const isActive = activeTab === item.id;
@@ -176,16 +176,16 @@ export default function InventoryPage() {
                   key={item.id}
                   onClick={() => handleTabClick(item.id)}
                   className={`
-                    flex items-center gap-1.5 sm:gap-2 px-2 sm:px-3 md:px-4 py-2.5 sm:py-3 text-xs sm:text-sm font-medium transition-all duration-200 whitespace-nowrap flex-shrink-0
+                    flex items-center gap-1 sm:gap-1.5 md:gap-2 px-2 sm:px-3 md:px-4 py-2 sm:py-2.5 md:py-3 text-xs sm:text-sm font-medium transition-all duration-200 whitespace-nowrap flex-shrink-0
                     ${isActive
                       ? 'text-primary-600 border-b-2 border-primary-500 bg-primary-50'
                       : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
                     }
                   `}
                 >
-                  <span className="flex-shrink-0">{item.icon}</span>
+                  <span className="flex-shrink-0 w-3 h-3 sm:w-4 sm:h-4">{item.icon}</span>
+                  <span className="hidden xs:inline sm:hidden">{item.label.split(' ')[0]}</span>
                   <span className="hidden sm:inline">{item.label}</span>
-                  <span className="sm:hidden">{item.label.split(' ')[0]}</span>
                 </button>
               );
             })}
@@ -194,65 +194,67 @@ export default function InventoryPage() {
       </div>
 
       {/* Content Area - Matching Parts Management Style */}
-      <div className="bg-white rounded-xl shadow-soft border border-gray-200 p-3 sm:p-4 md:p-6">
-        {activeTab === 'dashboard' && (
-          <div className="-m-4 sm:-m-6 -mb-4 sm:-mb-6">
-            <InventoryDashboard />
-          </div>
-        )}
-        {activeTab === 'purchase-order' && (
-          <div className="-m-6 -mb-0">
-            <PurchaseOrdersPage />
-          </div>
-        )}
-        {activeTab === 'direct-purchase' && (
-          <div className="-m-6 -mb-0">
-            <DirectPurchaseOrdersPage />
-          </div>
-        )}
-        {activeTab === 'stock' && (
-          <InventoryStock />
-        )}
-        {activeTab === 'stock-transfer' && (
-          <StockTransfer />
-        )}
-        {activeTab === 'adjust-inventory' && (
-          <AdjustInventory />
-        )}
-        {activeTab === 'balance-valuation' && (
-          <StockBalanceValuation />
-        )}
-        {activeTab === 'multi-dimensional' && (
-          <StockMultiDimensionalReport />
-        )}
-        {activeTab === 'stock-analysis' && (
-          <StockAnalysis />
-        )}
-        {activeTab === 'verification' && (
-          <StockVerificationReport />
-        )}
-        {activeTab === 'prices' && (
-          <StockPriceManagement />
-        )}
-        {activeTab === 'racks' && (
-          <div className="-m-6 -mb-0">
-            <RacksPage />
-          </div>
-        )}
-        {activeTab === 'shelves' && (
-          <div>
-            <p className="text-gray-600">Shelves management content will be displayed here.</p>
-          </div>
-        )}
-        {activeTab === 'return-purchase' && (
-          <div className="text-center py-12">
-            <svg className="w-16 h-16 mx-auto text-gray-400 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" />
-            </svg>
-            <h3 className="text-lg font-semibold text-gray-900 mb-2">Return Purchase</h3>
-            <p className="text-gray-500">Return Purchase functionality coming soon.</p>
-          </div>
-        )}
+      <div className="bg-white rounded-lg sm:rounded-xl shadow-soft border border-gray-200 p-2 sm:p-3 md:p-4 lg:p-6 transition-all duration-300">
+        <div className="transition-all duration-300 ease-in-out">
+          {activeTab === 'dashboard' && (
+            <div className="-m-2 sm:-m-3 md:-m-4 lg:-m-6 -mb-2 sm:-mb-3 md:-mb-4 lg:-mb-6">
+              <InventoryDashboard />
+            </div>
+          )}
+          {activeTab === 'purchase-order' && (
+            <div className="-m-2 sm:-m-3 md:-m-4 lg:-m-6 -mb-0">
+              <PurchaseOrdersPage />
+            </div>
+          )}
+          {activeTab === 'direct-purchase' && (
+            <div className="-m-2 sm:-m-3 md:-m-4 lg:-m-6 -mb-0">
+              <DirectPurchaseOrdersPage />
+            </div>
+          )}
+          {activeTab === 'stock' && (
+            <InventoryStock />
+          )}
+          {activeTab === 'stock-transfer' && (
+            <StockTransfer />
+          )}
+          {activeTab === 'adjust-inventory' && (
+            <AdjustInventory />
+          )}
+          {activeTab === 'balance-valuation' && (
+            <StockBalanceValuation />
+          )}
+          {activeTab === 'multi-dimensional' && (
+            <StockMultiDimensionalReport />
+          )}
+          {activeTab === 'stock-analysis' && (
+            <StockAnalysis />
+          )}
+          {activeTab === 'verification' && (
+            <StockVerificationReport />
+          )}
+          {activeTab === 'prices' && (
+            <StockPriceManagement />
+          )}
+          {activeTab === 'racks' && (
+            <div className="-m-2 sm:-m-3 md:-m-4 lg:-m-6 -mb-0">
+              <RacksPage />
+            </div>
+          )}
+          {activeTab === 'shelves' && (
+            <div>
+              <p className="text-gray-600">Shelves management content will be displayed here.</p>
+            </div>
+          )}
+          {activeTab === 'return-purchase' && (
+            <div className="text-center py-12">
+              <svg className="w-16 h-16 mx-auto text-gray-400 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" />
+              </svg>
+              <h3 className="text-lg font-semibold text-gray-900 mb-2">Return Purchase</h3>
+              <p className="text-gray-500">Return Purchase functionality coming soon.</p>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );

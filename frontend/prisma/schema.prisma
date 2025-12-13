@@ -89,16 +89,17 @@ model Stock {
 }
 
 model Category {
-  id          String     @id @default(cuid())
+  id          String        @id @default(cuid())
   name        String
-  type        String     // "main" or "sub"
-  parentId    String?    // For subcategories, reference to main category
-  parent      Category?  @relation("CategoryHierarchy", fields: [parentId], references: [id], onDelete: Cascade)
-  subcategories Category[] @relation("CategoryHierarchy")
+  type        String        // "main" or "sub"
+  parentId    String?       // For subcategories, reference to main category
+  parent      Category?      @relation("CategoryHierarchy", fields: [parentId], references: [id], onDelete: Cascade)
+  subcategories Category[]   @relation("CategoryHierarchy")
+  applications Application[] @relation("ApplicationToSubCategory")
   description String?
-  status      String     @default("A") // "A" for active, "I" for inactive
-  createdAt   DateTime   @default(now())
-  updatedAt   DateTime   @updatedAt
+  status      String        @default("A") // "A" for active, "I" for inactive
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
 
   @@index([type])
   @@index([parentId])
@@ -493,14 +494,18 @@ model Make {
 }
 
 model Application {
-  id        String   @id @default(cuid())
-  name      String   @unique
-  status    String   @default("A") // "A" for active, "I" for inactive
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id           String    @id @default(cuid())
+  name         String
+  subCategoryId String?
+  subCategory  Category? @relation("ApplicationToSubCategory", fields: [subCategoryId], references: [id], onDelete: SetNull)
+  status       String    @default("A") // "A" for active, "I" for inactive
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
 
+  @@unique([name, subCategoryId])
   @@index([name])
   @@index([status])
+  @@index([subCategoryId])
 }
 
 model Dimension {
@@ -627,6 +632,17 @@ model Shelf {
 
   @@unique([shelfNumber, rackId])
   @@index([rackId])
+}
+
+model Brand {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  status    String   @default("A") // "A" for active, "I" for inactive
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([name])
+  @@index([status])
 }
 
 
