@@ -627,6 +627,11 @@ router.post('/makeKit', async (req: AuthRequest, res: Response) => {
                 include: {
                   inventories: {
                     where: { storeId: store_id }
+                  },
+                  machinePartOemPart: {
+                    include: {
+                      machinePart: true
+                    }
                   }
                 }
               }

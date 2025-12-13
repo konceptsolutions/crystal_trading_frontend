@@ -80,7 +80,7 @@ router.post('/', async (req: AuthRequest, res) => {
 
     // Check if make name already exists
     const existing = await prisma.make.findFirst({
-      where: { name: { equals: data.name, mode: 'insensitive' } },
+      where: { name: { equals: data.name } },
     });
 
     if (existing) {
@@ -120,7 +120,7 @@ router.put('/:id', async (req: AuthRequest, res) => {
     if (data.name && data.name !== existing.name) {
       const duplicate = await prisma.make.findFirst({
         where: {
-          name: { equals: data.name, mode: 'insensitive' },
+          name: { equals: data.name },
           id: { not: req.params.id },
         },
       });

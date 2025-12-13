@@ -70,7 +70,6 @@ router.get('/', async (req: AuthRequest, res) => {
       }),
       prisma.part.count({
         where,
-        distinct: ['id'],
       }),
     ]);
 

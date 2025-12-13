@@ -1,6 +1,6 @@
 import express from 'express';
 import bcrypt from 'bcryptjs';
-import jwt from 'jsonwebtoken';
+import jwt, { SignOptions } from 'jsonwebtoken';
 import { z } from 'zod';
 import { prisma } from '../utils/prisma';
 import { verifyToken, AuthRequest } from '../middleware/auth';
@@ -55,7 +55,7 @@ router.post('/register', async (req, res) => {
         role: user.role,
       },
       jwtSecret,
-      { expiresIn }
+      { expiresIn: expiresIn as any }
     );
 
     res.status(201).json({
@@ -125,7 +125,7 @@ router.post('/login', async (req, res) => {
         role: user.role,
       },
       jwtSecret,
-      { expiresIn }
+      { expiresIn: expiresIn as any }
     );
 
     res.json({
