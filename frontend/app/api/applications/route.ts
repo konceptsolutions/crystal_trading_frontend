@@ -29,19 +29,38 @@ export async function GET(request: NextRequest) {
       where.name = { contains: search };
     }
 
-    if (subCategoryId) {
-      where.subCategoryId = subCategoryId;
-    }
+    // Try to filter by subCategoryId if provided, but handle case where column doesn't exist
+    let applications;
+    try {
+      if (subCategoryId) {
+        where.subCategoryId = subCategoryId;
+      }
 
-    const applications = await prisma.application.findMany({
-      where,
-      include: {
-        subCategory: true,
-      },
-      orderBy: {
-        name: 'asc',
-      },
-    });
+      applications = await prisma.application.findMany({
+        where,
+        include: {
+          subCategory: true,
+        },
+        orderBy: {
+          name: 'asc',
+        },
+      });
+    } catch (error: any) {
+      // If subCategoryId column doesn't exist, retry without it
+      if (error.code === 'P2022' && error.meta?.column?.includes('subCategoryId')) {
+        console.warn('subCategoryId column not found in database, querying without subCategoryId filter');
+        // Remove subCategoryId from where clause
+        const { subCategoryId: _, ...whereWithoutSubCategory } = where;
+        applications = await prisma.application.findMany({
+          where: whereWithoutSubCategory,
+          orderBy: {
+            name: 'asc',
+          },
+        });
+      } else {
+        throw error;
+      }
+    }
 
     // Return just the names for backward compatibility
     const applicationNames = applications.map((app: any) => app.name);
@@ -76,51 +95,78 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Application name is required' }, { status: 400 });
     }
 
-    if (!subCategoryId) {
-      return NextResponse.json({ error: 'Sub-category is required to add an application' }, { status: 400 });
-    }
-
     const trimmedName = name.trim();
 
-    // Verify sub-category exists and is a sub-category (type === 'sub')
-    const subCategory = await prisma.category.findUnique({
-      where: { id: subCategoryId },
-    });
+    // Verify sub-category exists and is a sub-category (type === 'sub') if subCategoryId is provided
+    if (subCategoryId) {
+      const subCategory = await prisma.category.findUnique({
+        where: { id: subCategoryId },
+      });
 
-    if (!subCategory) {
-      return NextResponse.json({ error: 'Sub-category not found' }, { status: 404 });
+      if (!subCategory) {
+        return NextResponse.json({ error: 'Sub-category not found' }, { status: 404 });
+      }
+
+      if (subCategory.type !== 'sub') {
+        return NextResponse.json({ error: 'Selected category is not a sub-category' }, { status: 400 });
+      }
     }
 
-    if (subCategory.type !== 'sub') {
-      return NextResponse.json({ error: 'Selected category is not a sub-category' }, { status: 400 });
+    // Check if application already exists
+    let existing;
+    try {
+      existing = await prisma.application.findFirst({
+        where: {
+          name: trimmedName,
+          subCategoryId: subCategoryId,
+        },
+      });
+    } catch (error: any) {
+      // If subCategoryId column doesn't exist, check by name only
+      if (error.code === 'P2022' && error.meta?.column?.includes('subCategoryId')) {
+        existing = await prisma.application.findFirst({
+          where: {
+            name: trimmedName,
+          },
+        });
+      } else {
+        throw error;
+      }
     }
-
-    // Check if application already exists for this sub-category
-    const existing = await prisma.application.findFirst({
-      where: {
-        name: trimmedName,
-        subCategoryId: subCategoryId,
-      },
-    });
 
     if (existing) {
       return NextResponse.json(
-        { error: 'Application with this name already exists for this sub-category' },
+        { error: 'Application with this name already exists' },
         { status: 400 }
       );
     }
 
     // Create the application record
-    const application = await prisma.application.create({
-      data: {
-        name: trimmedName,
-        subCategoryId: subCategoryId,
-        status: 'A',
-      },
-      include: {
-        subCategory: true,
-      },
-    });
+    let application;
+    try {
+      application = await prisma.application.create({
+        data: {
+          name: trimmedName,
+          subCategoryId: subCategoryId,
+          status: 'A',
+        },
+        include: {
+          subCategory: true,
+        },
+      });
+    } catch (error: any) {
+      // If subCategoryId column doesn't exist, create without it
+      if (error.code === 'P2022' && error.meta?.column?.includes('subCategoryId')) {
+        application = await prisma.application.create({
+          data: {
+            name: trimmedName,
+            status: 'A',
+          },
+        });
+      } else {
+        throw error;
+      }
+    }
 
     return NextResponse.json({ application }, { status: 201 });
   } catch (error: any) {

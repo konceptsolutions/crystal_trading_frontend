@@ -674,6 +674,22 @@ export default function PartForm({ part, onSave, onDelete, models = [] }: PartFo
     setLoading(true);
 
     try {
+      // Get the latest models from props (they should be up-to-date from ModelsPanel)
+      const latestModels = models || [];
+      
+      console.log('PartForm: Preparing to save with models:', latestModels);
+      
+      // Filter and prepare models for saving
+      const modelsToSave = latestModels
+        .filter(model => model.modelNo && model.modelNo.trim()) // Only include models with valid model numbers
+        .map(model => ({
+          modelNo: model.modelNo.trim(),
+          qtyUsed: model.qtyUsed || 1,
+          tab: model.tab || 'P1'
+        }));
+      
+      console.log('PartForm: Filtered models to save:', modelsToSave);
+      
       // Clean up form data - convert empty strings to undefined for optional fields
       const cleanedData: any = {
         partNo: formData.partNo.trim(),
@@ -700,23 +716,48 @@ export default function PartForm({ part, onSave, onDelete, models = [] }: PartFo
         remarks: formData.remarks?.trim() || undefined,
         imageUrl1: formData.imageUrl1 || undefined,
         imageUrl2: formData.imageUrl2 || undefined,
-        models: (models || [])
-          .filter(model => model.modelNo && model.modelNo.trim()) // Only include models with valid model numbers
-          .map(model => ({
-            modelNo: model.modelNo.trim(),
-            qtyUsed: model.qtyUsed || 1,
-            tab: model.tab || 'P1'
-          })),
+        models: modelsToSave,
       };
+      
+      // Debug log to verify models are being sent
+      console.log('Saving part with models:', {
+        partId: part?.id,
+        modelsCount: modelsToSave.length,
+        models: modelsToSave
+      });
 
       if (part?.id) {
         // Update
         const response = await api.put(`/parts/${part.id}`, cleanedData);
-        onSave(response.data.part);
+        const savedPart = response.data.part;
+        console.log('PartForm: Saved part response:', savedPart);
+        console.log('PartForm: Models in saved part:', savedPart?.models);
+        onSave(savedPart);
+        // Show success message with model count
+        const savedModelsCount = savedPart?.models?.length || 0;
+        if (savedModelsCount > 0) {
+          showToast(`Part updated successfully with ${savedModelsCount} model(s)`, 'success');
+        } else if (modelsToSave.length > 0) {
+          showToast(`Part updated successfully. Note: ${modelsToSave.length} model(s) were sent but may not be saved.`, 'success');
+        } else {
+          showToast('Part updated successfully', 'success');
+        }
       } else {
         // Create
         const response = await api.post('/parts', cleanedData);
-        onSave(response.data.part);
+        const savedPart = response.data.part;
+        console.log('PartForm: Created part response:', savedPart);
+        console.log('PartForm: Models in created part:', savedPart?.models);
+        onSave(savedPart);
+        // Show success message with model count
+        const savedModelsCount = savedPart?.models?.length || 0;
+        if (savedModelsCount > 0) {
+          showToast(`Part created successfully with ${savedModelsCount} model(s)`, 'success');
+        } else if (modelsToSave.length > 0) {
+          showToast(`Part created successfully. Note: ${modelsToSave.length} model(s) were sent but may not be saved.`, 'success');
+        } else {
+          showToast('Part created successfully', 'success');
+        }
       }
     } catch (err: any) {
       console.error('Save error:', err);
