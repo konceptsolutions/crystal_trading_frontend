@@ -238,6 +238,7 @@ export default function ModelsPanel({
                 <TableRow className="border-b border-gray-200">
                   <TableHead className="h-8 px-2 text-xs font-semibold text-gray-700">Model</TableHead>
                   <TableHead className="h-8 px-2 text-xs font-semibold text-gray-700 text-right">Qty. Used</TableHead>
+                  <TableHead className="h-8 px-2 text-xs font-semibold text-gray-700 text-right"> </TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -248,26 +249,12 @@ export default function ModelsPanel({
                     return (
                       <TableRow key={rowKey} className="border-b border-gray-100 hover:bg-gray-50">
                         <TableCell className="px-2 py-1.5">
-                          <div className="flex items-center gap-1">
-                            <Input
-                              value={model.modelNo || ''}
-                              onChange={(e) => updateModel(index, 'modelNo', e.target.value)}
-                              placeholder="Enter model number"
-                              className="h-7 text-xs border-gray-200 focus:border-primary-400"
-                            />
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => removeModel(index)}
-                              className="h-7 w-7 p-0 text-gray-400 hover:text-red-600 hover:bg-red-50 flex-shrink-0"
-                              title={models.length > 1 ? 'Remove row' : 'Clear row'}
-                            >
-                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                              </svg>
-                            </Button>
-                          </div>
+                          <Input
+                            value={model.modelNo || ''}
+                            onChange={(e) => updateModel(index, 'modelNo', e.target.value)}
+                            placeholder="Enter model number"
+                            className="h-7 text-xs border-gray-200 focus:border-primary-400"
+                          />
                         </TableCell>
                         <TableCell className="px-2 py-1.5">
                           <div className="flex items-center justify-end gap-1">
@@ -280,12 +267,26 @@ export default function ModelsPanel({
                             />
                           </div>
                         </TableCell>
+                        <TableCell className="px-2 py-1.5 text-right">
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => removeModel(index)}
+                            className="h-9 w-9 p-0 text-red-600 border border-red-200 hover:text-red-700 hover:bg-red-50 hover:border-red-300 inline-flex items-center justify-center rounded-md"
+                            title={models.length > 1 ? 'Remove row' : 'Clear row'}
+                          >
+                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" />
+                            </svg>
+                          </Button>
+                        </TableCell>
                       </TableRow>
                     );
                   })
                 ) : (
                   <TableRow>
-                    <TableCell colSpan={2} className="px-2 py-4 text-center text-gray-500 text-xs">
+                    <TableCell colSpan={3} className="px-2 py-4 text-center text-gray-500 text-xs">
                       No models added yet. Enter a model number above.
                     </TableCell>
                   </TableRow>
