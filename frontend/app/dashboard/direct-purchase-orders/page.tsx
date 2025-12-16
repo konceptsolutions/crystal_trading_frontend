@@ -7,8 +7,10 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select } from '@/components/ui/select';
+import { useToast } from '@/components/ui/toast-provider';
 import api from '@/lib/api';
 import { Part } from '@/components/inventory/PartForm';
+import PurchaseOrderDetailsModal from '@/components/purchase-orders/PurchaseOrderDetailsModal';
 
 export interface PurchaseOrderItem {
   id?: string;
@@ -60,6 +62,7 @@ export interface DirectPurchaseOrder {
 }
 
 export default function DirectPurchaseOrdersPage() {
+  const { showToast } = useToast();
   const [purchaseOrders, setPurchaseOrders] = useState<DirectPurchaseOrder[]>([]);
   const [availableParts, setAvailableParts] = useState<Part[]>([]);
   const [availableSuppliers, setAvailableSuppliers] = useState<Supplier[]>([]);
@@ -201,10 +204,11 @@ export default function DirectPurchaseOrdersPage() {
       ...prev,
       items: [{
         partNo: '',
+        description: '',
         quantity: 1,
         unitPrice: 0,
         totalPrice: 0,
-        uom: '',
+        uom: 'NOS',
       }, ...prev.items],
     }));
   };
@@ -231,9 +235,10 @@ export default function DirectPurchaseOrdersPage() {
       if (part) {
         updated[index].partNo = part.partNo;
         updated[index].description = part.description || '';
-        updated[index].unitPrice = part.cost || 0;
-        updated[index].totalPrice = (updated[index].quantity || 1) * (part.cost || 0);
-        updated[index].uom = part.uom || '';
+        // Do NOT auto-fill purchase price from Part Entry.
+        // Admin will enter the original purchase price manually.
+        updated[index].totalPrice = (updated[index].quantity || 0) * (updated[index].unitPrice || 0);
+        updated[index].uom = part.uom || 'NOS';
       }
     }
     
@@ -246,12 +251,16 @@ export default function DirectPurchaseOrdersPage() {
     setSuccess('');
 
     if (formData.items.length === 0) {
-      setError('Please add at least one item to the direct purchase order');
+      const msg = 'Please add at least one item to the direct purchase order';
+      setError(msg);
+      showToast(msg, 'error');
       return;
     }
 
     if (formData.items.some(item => !item.partNo || item.quantity <= 0 || item.unitPrice < 0)) {
-      setError('Please fill in all item details correctly');
+      const msg = 'Please fill in all item details correctly';
+      setError(msg);
+      showToast(msg, 'error');
       return;
     }
 
@@ -278,7 +287,8 @@ export default function DirectPurchaseOrdersPage() {
         items: formData.items.map(item => ({
           partId: item.partId || undefined,
           partNo: item.partNo,
-          description: item.description,
+          // Backend expects string (not null)
+          description: (item.description ?? '').toString(),
           quantity: item.quantity,
           unitPrice: item.unitPrice,
           totalPrice: item.totalPrice,
@@ -292,10 +302,12 @@ export default function DirectPurchaseOrdersPage() {
       if (selectedPO?.id) {
         const response = await api.put(`/purchase-orders/${selectedPO.id}`, poData);
         setSuccess('Direct purchase order updated successfully');
+        showToast('Direct purchase order updated successfully', 'success');
         setSelectedPO(response.data.purchaseOrder);
       } else {
         const response = await api.post('/purchase-orders', poData);
         setSuccess('Direct purchase order created successfully');
+        showToast('Direct purchase order created successfully', 'success');
         setSelectedPO(response.data.purchaseOrder);
       }
       
@@ -305,6 +317,7 @@ export default function DirectPurchaseOrdersPage() {
       setTimeout(() => setShowForm(false), 1500);
     } catch (err: any) {
       setError(err.response?.data?.error || 'Failed to save direct purchase order');
+      showToast(err.response?.data?.error || 'Failed to save direct purchase order', 'error');
     } finally {
       setLoading(false);
     }
@@ -321,6 +334,7 @@ export default function DirectPurchaseOrdersPage() {
       notes: (po.notes ?? '').toString(),
       items: (po.items || []).map((it: any) => ({
         ...it,
+        description: (it?.description ?? '').toString(),
         uom: (it?.uom ?? 'NOS').toString(),
       })),
     });
@@ -475,89 +489,11 @@ export default function DirectPurchaseOrdersPage() {
         </div>
       )}
 
-      {success && (
-        <div className="bg-green-50 border-l-4 border-green-500 text-green-700 px-4 py-3 rounded-md shadow-sm animate-fade-in">
-          {success}
-        </div>
-      )}
+      {/* Success is shown via top-right toast now (no inline banner) */}
 
       {/* View PO Modal */}
       {viewingPO && (
-        <div className="fixed inset-0 z-[200] bg-black/40 flex items-center justify-center p-2 sm:p-4">
-          <Card className="w-[min(96vw,64rem)] max-h-[90vh] shadow-2xl flex flex-col overflow-hidden">
-            <CardHeader className="flex flex-row items-center justify-between gap-2 py-3">
-              <CardTitle className="text-base sm:text-lg">Direct Purchase Order Details</CardTitle>
-              <Button variant="ghost" onClick={() => setViewingPO(null)} className="h-8 w-8 px-0">✕</Button>
-            </CardHeader>
-            <CardContent className="flex-1 overflow-y-auto po-details-scroll space-y-3 sm:space-y-4">
-              <style
-                dangerouslySetInnerHTML={{
-                  __html: `
-                    @media (max-width: 768px) {
-                      .po-details-scroll::-webkit-scrollbar { display: none; }
-                      .po-details-scroll { -ms-overflow-style: none; scrollbar-width: none; }
-                    }
-                  `,
-                }}
-              />
-
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 sm:gap-4">
-                <div>
-                  <p className="text-xs text-gray-500">PO No</p>
-                  <p className="font-semibold break-words">{viewingPO.poNo}</p>
-                </div>
-                <div>
-                  <p className="text-xs text-gray-500">Supplier</p>
-                  <p className="font-semibold break-words">{viewingPO.supplierName}</p>
-                </div>
-                <div>
-                  <p className="text-xs text-gray-500">Status</p>
-                  <p className="font-semibold break-words capitalize">{viewingPO.status}</p>
-                </div>
-                <div>
-                  <p className="text-xs text-gray-500">Request Date</p>
-                  <p className="font-semibold">{formatDate(viewingPO.orderDate)}</p>
-                </div>
-                <div>
-                  <p className="text-xs text-gray-500">Receive Date</p>
-                  <p className="font-semibold">{formatDate((viewingPO as any).receivedAt)}</p>
-                </div>
-                <div>
-                  <p className="text-xs text-gray-500">Grand Total</p>
-                  <p className="font-semibold">{Number(viewingPO.totalAmount || 0).toLocaleString()}</p>
-                </div>
-              </div>
-
-              <div>
-                <p className="text-xs text-gray-500 mb-2">Items</p>
-                <div className="border rounded-md overflow-hidden">
-                  <div className="w-full overflow-x-auto">
-                    <table className="w-full text-sm min-w-[520px]">
-                    <thead className="bg-gray-50">
-                      <tr className="text-left">
-                        <th className="px-3 py-2 whitespace-nowrap">Part No</th>
-                        <th className="px-3 py-2 whitespace-nowrap">Qty</th>
-                        <th className="px-3 py-2 whitespace-nowrap">Unit Price</th>
-                        <th className="px-3 py-2 whitespace-nowrap">Total</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {(viewingPO.items || []).map((it: any, idx: number) => (
-                        <tr key={idx} className="border-t">
-                          <td className="px-3 py-2 font-medium break-words min-w-[180px]">{it.partNo}</td>
-                          <td className="px-3 py-2 whitespace-nowrap">{it.quantity}</td>
-                          <td className="px-3 py-2 whitespace-nowrap">{Number(it.unitPrice || 0).toLocaleString()}</td>
-                          <td className="px-3 py-2 whitespace-nowrap">{Number(it.totalPrice || 0).toLocaleString()}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                    </table>
-                  </div>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
+        <PurchaseOrderDetailsModal po={viewingPO} onClose={() => setViewingPO(null)} title="Direct Purchase Order Details" />
       )}
 
       {/* Receive PO Section (shows instead of list) */}

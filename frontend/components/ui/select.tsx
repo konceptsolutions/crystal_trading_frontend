@@ -7,6 +7,8 @@ export interface SelectProps
   fullWidth?: boolean;
   responsive?: boolean;
   error?: boolean;
+  containerClassName?: string;
+  hideArrow?: boolean;
 }
 
 const Select = React.forwardRef<HTMLSelectElement, SelectProps>(
@@ -18,6 +20,8 @@ const Select = React.forwardRef<HTMLSelectElement, SelectProps>(
     fullWidth = false,
     responsive = false,
     error = false,
+    containerClassName = '',
+    hideArrow = false,
     ...props 
   }, ref) => {
     
@@ -38,20 +42,21 @@ const Select = React.forwardRef<HTMLSelectElement, SelectProps>(
     const widthClass = fullWidth ? 'w-full' : responsive ? 'w-full sm:max-w-xs md:max-w-sm' : 'w-full max-w-xs';
     
     return (
-      <div className={`relative ${widthClass}`}>
+      <div className={`relative ${widthClass} ${containerClassName}`}>
         <select
-          className={`${baseStyles} ${variants[variant]} ${sizes[size]} ${widthClass} appearance-none pr-8 ${className}`}
+          className={`${baseStyles} ${variants[variant]} ${sizes[size]} ${widthClass} appearance-none ${hideArrow ? 'pr-3' : 'pr-8'} ${className}`}
           ref={ref}
           {...props}
         >
           {children}
         </select>
-        {/* Custom dropdown arrow */}
-        <div className="absolute inset-y-0 right-0 flex items-center pr-2 pointer-events-none">
-          <svg className={`${responsive ? 'w-4 h-4 sm:w-5 sm:h-5' : 'w-5 h-5'} text-gray-400`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-          </svg>
-        </div>
+        {!hideArrow && (
+          <div className="absolute inset-y-0 right-0 flex items-center pr-2 pointer-events-none">
+            <svg className={`${responsive ? 'w-4 h-4 sm:w-5 sm:h-5' : 'w-5 h-5'} text-gray-400`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+            </svg>
+          </div>
+        )}
       </div>
     );
   }

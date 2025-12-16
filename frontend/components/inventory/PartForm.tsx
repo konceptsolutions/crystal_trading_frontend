@@ -1112,6 +1112,218 @@ export default function PartForm({ part, onSave, onDelete, models = [] }: PartFo
             </div>
           </div>
 
+          {/* Specifications Section */}
+          <div className="space-y-2 sm:space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-1 sm:gap-4 md:gap-5 w-full">
+              <div className="space-y-1 sm:space-y-2 w-full min-w-0">
+                <Label htmlFor="hsCode" className="text-xs font-semibold text-gray-700 block h-4 sm:h-5 flex items-center">
+                  HS Code
+                </Label>
+                <Input
+                  id="hsCode"
+                  value={formData.hsCode || ''}
+                  onChange={(e) => handleChange('hsCode', e.target.value)}
+                  className="border-gray-300 focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20 h-10 sm:h-11 text-xs sm:text-sm w-full"
+                  placeholder="Enter HS code"
+                />
+              </div>
+
+              <div className="space-y-1 sm:space-y-2 w-full min-w-0">
+                <Label htmlFor="uom" className="text-xs font-semibold text-gray-700 block h-4 sm:h-5 flex items-center">
+                  UOM (A-Z)
+                </Label>
+                <AnimatedSelect
+                  value={formData.uom || 'NOS'}
+                  onChange={(value) => handleChange('uom', value)}
+                  options={UOM_OPTIONS.map((uom) => ({ value: uom, label: uom }))}
+                  placeholder="Select UOM"
+                  className="h-10 sm:h-11"
+                />
+              </div>
+
+              <div className="space-y-1 sm:space-y-2 w-full min-w-0">
+                <Label htmlFor="weight" className="text-xs font-semibold text-gray-700 block h-4 sm:h-5 flex items-center">
+                  Weight (Kg)
+                </Label>
+                <Input
+                  id="weight"
+                  type="number"
+                  step="0.01"
+                  value={formData.weight ?? ''}
+                  onChange={(e) => handleChange('weight', e.target.value ? parseFloat(e.target.value) : undefined)}
+                  className="border-gray-300 focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20 h-10 sm:h-11 text-xs sm:text-sm w-full"
+                  placeholder=""
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Pricing & Inventory Section */}
+          <div className="space-y-2 sm:space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-1 sm:gap-4 md:gap-5 w-full">
+              <div className="space-y-1 sm:space-y-2 w-full min-w-0">
+                <Label htmlFor="reOrderLevel" className="text-xs font-semibold text-gray-700 block h-4 sm:h-5 flex items-center">
+                  Re-Order Level
+                </Label>
+                <Input
+                  id="reOrderLevel"
+                  type="number"
+                  value={formData.reOrderLevel ?? 0}
+                  onChange={(e) => handleChange('reOrderLevel', parseInt(e.target.value) || 0)}
+                  className="border-gray-300 focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20 h-10 sm:h-11 text-xs sm:text-sm w-full"
+                  placeholder="0"
+                />
+              </div>
+              <div className="space-y-1 sm:space-y-2 w-full min-w-0">
+                <Label htmlFor="cost" className="text-xs font-semibold text-gray-700 block h-4 sm:h-5 flex items-center">
+                  Cost
+                </Label>
+                <Input
+                  id="cost"
+                  type="number"
+                  step="0.01"
+                  value={formData.cost ?? ''}
+                  onChange={(e) => handleChange('cost', e.target.value ? parseFloat(e.target.value) : undefined)}
+                  className="border-gray-300 focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20 h-10 sm:h-11 text-xs sm:text-sm w-full"
+                  placeholder="0.00"
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-1 sm:gap-4 md:gap-5 w-full">
+              <div className="space-y-1 sm:space-y-2 w-full min-w-0">
+                <Label htmlFor="priceA" className="text-xs font-semibold text-gray-700 block h-4 sm:h-5 flex items-center">
+                  Price-A
+                </Label>
+                <Input
+                  id="priceA"
+                  type="number"
+                  step="0.01"
+                  value={formData.priceA ?? ''}
+                  onChange={(e) => handleChange('priceA', e.target.value ? parseFloat(e.target.value) : undefined)}
+                  className="border-gray-300 focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20 h-10 sm:h-11 text-xs sm:text-sm w-full"
+                  placeholder="0.00"
+                />
+              </div>
+              <div className="space-y-1 sm:space-y-2 w-full min-w-0">
+                <Label htmlFor="priceB" className="text-xs font-semibold text-gray-700 block h-4 sm:h-5 flex items-center">
+                  Price-B
+                </Label>
+                <Input
+                  id="priceB"
+                  type="number"
+                  step="0.01"
+                  value={formData.priceB ?? ''}
+                  onChange={(e) => handleChange('priceB', e.target.value ? parseFloat(e.target.value) : undefined)}
+                  className="border-gray-300 focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20 h-10 sm:h-11 text-xs sm:text-sm w-full"
+                  placeholder="0.00"
+                />
+              </div>
+              <div className="space-y-1 sm:space-y-2 w-full min-w-0">
+                <Label htmlFor="priceM" className="text-xs font-semibold text-gray-700 block h-4 sm:h-5 flex items-center">
+                  Price-M
+                </Label>
+                <Input
+                  id="priceM"
+                  type="number"
+                  step="0.01"
+                  value={formData.priceM ?? ''}
+                  onChange={(e) => handleChange('priceM', e.target.value ? parseFloat(e.target.value) : undefined)}
+                  className="border-gray-300 focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20 h-10 sm:h-11 text-xs sm:text-sm w-full"
+                  placeholder="0.00"
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Location & Status Section */}
+          <div className="space-y-2 sm:space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-1 sm:gap-4 md:gap-5 w-full">
+              <div className="space-y-1 sm:space-y-2 w-full min-w-0">
+                <Label htmlFor="rackNo" className="text-xs font-semibold text-gray-700 block h-4 sm:h-5 flex items-center">
+                  Rack No
+                </Label>
+                <Input
+                  id="rackNo"
+                  value={formData.rackNo || ''}
+                  onChange={(e) => handleChange('rackNo', e.target.value)}
+                  className="border-gray-300 focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20 h-10 sm:h-11 text-xs sm:text-sm w-full"
+                  placeholder="Enter rack number"
+                />
+              </div>
+
+              <div className="space-y-1 sm:space-y-2 w-full min-w-0">
+                <Label htmlFor="origin" className="text-xs font-semibold text-gray-700 block h-4 sm:h-5 flex items-center">
+                  Origin
+                </Label>
+                <AnimatedSelect
+                  value={formData.origin || ''}
+                  onChange={(value) => handleChange('origin', value)}
+                  options={[
+                    { value: '', label: 'Select Origin' },
+                    ...ORIGIN_OPTIONS.map((origin) => ({ value: origin, label: origin })),
+                  ]}
+                  placeholder="Select Origin"
+                  className="h-10 sm:h-11"
+                />
+              </div>
+
+              <div className="space-y-1 sm:space-y-2 w-full min-w-0">
+                <Label htmlFor="grade" className="text-xs font-semibold text-gray-700 block h-4 sm:h-5 flex items-center">
+                  Grade (A/B/C/D)
+                </Label>
+                <AnimatedSelect
+                  value={formData.grade || 'B'}
+                  onChange={(value) => handleChange('grade', value)}
+                  options={GRADE_OPTIONS.map((grade) => ({ value: grade, label: grade }))}
+                  placeholder="Select Grade"
+                  className="h-10 sm:h-11"
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-1 sm:gap-4 md:gap-5 w-full">
+              <div className="space-y-1 sm:space-y-2 w-full min-w-0">
+                <Label htmlFor="status" className="text-xs font-semibold text-gray-700 block h-4 sm:h-5 flex items-center">
+                  Status (A/N)
+                </Label>
+                <AnimatedSelect
+                  value={formData.status || 'A'}
+                  onChange={(value) => handleChange('status', value)}
+                  options={STATUS_OPTIONS.map((status) => ({ value: status, label: status }))}
+                  placeholder="Select Status"
+                  className="h-10 sm:h-11"
+                />
+              </div>
+
+              <div className="space-y-1 sm:space-y-2 w-full min-w-0">
+                <Label htmlFor="smc" className="text-xs font-semibold text-gray-700 block h-4 sm:h-5 flex items-center">
+                  SMC
+                </Label>
+                <Input
+                  id="smc"
+                  value={formData.smc || ''}
+                  onChange={(e) => handleChange('smc', e.target.value)}
+                  className="border-gray-300 focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20 h-10 sm:h-11 text-xs sm:text-sm w-full"
+                  placeholder="Enter SMC"
+                />
+              </div>
+
+              <div className="space-y-1 sm:space-y-2 w-full min-w-0">
+                <Label htmlFor="size" className="text-xs font-semibold text-gray-700 block h-4 sm:h-5 flex items-center">
+                  Size
+                </Label>
+                <Input
+                  id="size"
+                  value={formData.size || ''}
+                  onChange={(e) => handleChange('size', e.target.value)}
+                  className="border-gray-300 focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20 h-10 sm:h-11 text-xs sm:text-sm w-full"
+                  placeholder="LxHxW"
+                />
+              </div>
+            </div>
+          </div>
+
           {/* Product Images */}
           <div className="space-y-2 sm:space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-1 sm:gap-4 md:gap-5 w-full">

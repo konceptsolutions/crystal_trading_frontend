@@ -1,14 +1,17 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select } from '@/components/ui/select';
+import { DatePicker } from '@/components/ui/date-picker';
+import { useToast } from '@/components/ui/toast-provider';
 import api from '@/lib/api';
 import { Part } from '@/components/inventory/PartForm';
+import PurchaseOrderDetailsModal from '@/components/purchase-orders/PurchaseOrderDetailsModal';
 
 export interface PurchaseOrderItem {
   id?: string;
@@ -60,6 +63,7 @@ export interface PurchaseOrder {
 }
 
 export default function PurchaseOrdersPage() {
+  const { showToast } = useToast();
   // Removed activeTab - only Purchase Order type is supported
   const [purchaseOrders, setPurchaseOrders] = useState<PurchaseOrder[]>([]);
   const [availableParts, setAvailableParts] = useState<Part[]>([]);
@@ -86,6 +90,58 @@ export default function PurchaseOrdersPage() {
   const [availableStores, setAvailableStores] = useState<any[]>([]);
   const [availableRacks, setAvailableRacks] = useState<any[]>([]);
   const [availableShelves, setAvailableShelves] = useState<any[]>([]);
+  const [receiveSideTab, setReceiveSideTab] = useState<'stock' | 'history'>('stock');
+  const [selectedHistoryPartNo, setSelectedHistoryPartNo] = useState<string>('');
+
+  const lastPurchaseDateByPartNo = useMemo(() => {
+    // Build last purchase date per partNo from existing PO list (prefer receivedAt, fallback to orderDate)
+    const map = new Map<string, string>();
+    for (const po of purchaseOrders || []) {
+      const dateValue = (po as any)?.receivedAt || po?.orderDate;
+      const d = dateValue ? new Date(dateValue) : null;
+      if (!d || isNaN(d.getTime())) continue;
+      for (const it of po.items || []) {
+        const partNo = (it as any)?.partNo;
+        if (!partNo) continue;
+        const prev = map.get(partNo);
+        if (!prev) {
+          map.set(partNo, d.toISOString());
+        } else {
+          const prevD = new Date(prev);
+          if (d.getTime() > prevD.getTime()) map.set(partNo, d.toISOString());
+        }
+      }
+    }
+    return map;
+  }, [purchaseOrders]);
+
+  const selectedReceiveItem = useMemo(() => {
+    if (!selectedHistoryPartNo) return null;
+    return (receiveItems || []).find((it: any) => (it?.partNo || '') === selectedHistoryPartNo) || null;
+  }, [receiveItems, selectedHistoryPartNo]);
+
+  const selectedHistoryRows = useMemo(() => {
+    if (!selectedHistoryPartNo) return [];
+    return (purchaseOrders || [])
+      .filter((po) => (po.items || []).some((it: any) => it?.partNo === selectedHistoryPartNo))
+      .map((po) => {
+        const qty = (po.items || [])
+          .filter((it: any) => it?.partNo === selectedHistoryPartNo)
+          .reduce((s: number, it: any) => s + Number(it?.quantity || 0), 0);
+        const date = (po as any)?.receivedAt || po.orderDate;
+        return {
+          id: po.id,
+          poNo: po.poNo,
+          supplier: po.supplierName,
+          status: po.status,
+          qty,
+          date,
+          totalAmount: po.totalAmount,
+        };
+      })
+      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+      .slice(0, 10);
+  }, [purchaseOrders, selectedHistoryPartNo]);
 
   // Currency options
   const currencies = [
@@ -145,12 +201,15 @@ export default function PurchaseOrdersPage() {
     // Recalculate receive items when currency rate changes
     if (receivingPO && receiveItems.length > 0) {
       const updated = receiveItems.map(item => {
-        const unitPrice = item.unitPrice || 0;
+        // Keep Purchase Price (PKR) as the source of truth.
+        // Admin enters purchasePricePKR during receiving.
+        const purchasePricePKR = Number(item.purchasePricePKR || 0);
         const receivedQty = item.receivedQty || item.quantity || 0;
-        const purchasePricePKR = unitPrice * currencyRate;
+        const unitPrice = currencyRate > 0 ? purchasePricePKR / currencyRate : 0;
         const costPKR = receivedQty * purchasePricePKR;
         return {
           ...item,
+          unitPrice,
           purchasePricePKR,
           costPKR,
           amount: costPKR,
@@ -279,6 +338,7 @@ export default function PurchaseOrdersPage() {
       ...prev,
       items: [{
         partNo: '',
+        description: '',
         quantity: 1,
         unitPrice: 0,
         totalPrice: 0,
@@ -309,8 +369,10 @@ export default function PurchaseOrdersPage() {
       if (part) {
         updated[index].partNo = part.partNo;
         updated[index].description = part.description || '';
-        updated[index].unitPrice = part.cost || 0;
-        updated[index].totalPrice = (updated[index].quantity || 1) * (part.cost || 0);
+        // IMPORTANT:
+        // Do NOT auto-fill purchase price from Part Entry.
+        // Admin will enter the original purchase price manually.
+        updated[index].totalPrice = (updated[index].quantity || 0) * (updated[index].unitPrice || 0);
         updated[index].uom = part.uom || 'NOS';
       }
     }
@@ -324,12 +386,16 @@ export default function PurchaseOrdersPage() {
     setSuccess('');
 
     if (formData.items.length === 0) {
-      setError('Please add at least one item to the purchase order');
+      const msg = 'Please add at least one item to the purchase order';
+      setError(msg);
+      showToast(msg, 'error');
       return;
     }
 
     if (formData.items.some(item => !item.partNo || item.quantity <= 0 || item.unitPrice < 0)) {
-      setError('Please fill in all item details correctly');
+      const msg = 'Please fill in all item details correctly';
+      setError(msg);
+      showToast(msg, 'error');
       return;
     }
 
@@ -356,7 +422,8 @@ export default function PurchaseOrdersPage() {
         items: formData.items.map(item => ({
           partId: item.partId || undefined,
           partNo: item.partNo,
-          description: item.description,
+          // Backend expects string (not null)
+          description: (item.description ?? '').toString(),
           quantity: item.quantity,
           unitPrice: item.unitPrice,
           totalPrice: item.totalPrice,
@@ -370,10 +437,12 @@ export default function PurchaseOrdersPage() {
       if (selectedPO?.id) {
         const response = await api.put(`/purchase-orders/${selectedPO.id}`, poData);
         setSuccess('Purchase order updated successfully');
+        showToast('Purchase order updated successfully', 'success');
         setSelectedPO(response.data.purchaseOrder);
       } else {
         const response = await api.post('/purchase-orders', poData);
         setSuccess('Purchase order created successfully');
+        showToast('Purchase order created successfully', 'success');
         setSelectedPO(response.data.purchaseOrder);
       }
       
@@ -383,6 +452,7 @@ export default function PurchaseOrdersPage() {
       setTimeout(() => setShowForm(false), 1500);
     } catch (err: any) {
       setError(err.response?.data?.error || 'Failed to save purchase order');
+      showToast(err.response?.data?.error || 'Failed to save purchase order', 'error');
     } finally {
       setLoading(false);
     }
@@ -399,6 +469,7 @@ export default function PurchaseOrdersPage() {
       notes: (po.notes ?? '').toString(),
       items: (po.items || []).map((it: any) => ({
         ...it,
+        description: (it?.description ?? '').toString(),
         uom: (it?.uom ?? 'NOS').toString(),
       })),
     });
@@ -513,18 +584,31 @@ export default function PurchaseOrdersPage() {
         description: item.description || partDetails?.description || '',
         application: partDetails?.application || '',
         brand: partDetails?.brand || '',
+        stockQuantity:
+          (partDetails as any)?.stock?.quantity ??
+          (partDetails as any)?.stockQuantity ??
+          (partDetails as any)?.quantity ??
+          0,
       receivedQty: item.quantity,
-      purchasePricePKR: item.unitPrice * 1, // Will be recalculated when currency rate changes
-      salePrice: item.unitPrice * 1.1, // Default 10% markup
-      costPKR: item.unitPrice * item.quantity * 1,
-      amount: item.unitPrice * item.quantity * 1,
-        itemRemarks: '',
+      // Purchase Price (PKR) must start at 0 so admin can enter actual cost during receiving
+      purchasePricePKR: 0,
+      // Default sale price comes from Part Entry (selling price), not from purchase price
+      salePrice:
+        (partDetails?.priceA ?? partDetails?.priceB ?? partDetails?.priceM ?? partDetails?.cost ?? 0) * 1,
+      // Derived during receiving after admin enters purchasePricePKR
+      unitPrice: 0,
+      costPKR: 0,
+      amount: 0,
         racks: [],
         shelves: [],
       };
     }));
     
     setReceiveItems(items);
+    // Default the right-side selection to the first item
+    if (items.length > 0) {
+      setSelectedHistoryPartNo(items[0]?.partNo || '');
+    }
     setShowForm(false);
     setViewingPO(null);
     fetchRacks();
@@ -536,10 +620,24 @@ export default function PurchaseOrdersPage() {
     const updated = [...receiveItems];
     updated[index] = { ...updated[index], [field]: value };
     
-    // Recalculate purchasePricePKR, costPKR, and amount
-    const unitPrice = updated[index].unitPrice || 0;
+    // Recalculate unitPrice, costPKR, and amount
     const receivedQty = updated[index].receivedQty || updated[index].quantity || 0;
-    const purchasePricePKR = unitPrice * currencyRate;
+    let purchasePricePKR = Number(updated[index].purchasePricePKR || 0);
+
+    // If admin edits Purchase Price (PKR), compute unitPrice (currency) from currencyRate
+    if (field === 'purchasePricePKR') {
+      purchasePricePKR = Number(value || 0);
+      updated[index].unitPrice = currencyRate > 0 ? purchasePricePKR / currencyRate : 0;
+    }
+
+    // If admin edits "Price (currency)" (if ever enabled), keep PKR in sync
+    if (field === 'unitPrice') {
+      const unitPrice = Number(value || 0);
+      updated[index].unitPrice = unitPrice;
+      purchasePricePKR = unitPrice * currencyRate;
+      updated[index].purchasePricePKR = purchasePricePKR;
+    }
+
     const costPKR = receivedQty * purchasePricePKR;
     
     updated[index].purchasePricePKR = purchasePricePKR;
@@ -686,89 +784,11 @@ export default function PurchaseOrdersPage() {
         </div>
       )}
 
-      {success && (
-        <div className="bg-green-50 border-l-4 border-green-500 text-green-700 px-4 py-3 rounded-md shadow-sm animate-fade-in">
-          {success}
-        </div>
-      )}
+      {/* Success is shown via top-right toast now (no inline banner) */}
 
       {/* View PO Modal */}
       {viewingPO && (
-        <div className="fixed inset-0 z-[200] bg-black/40 flex items-center justify-center p-2 sm:p-4">
-          <Card className="w-[min(96vw,64rem)] max-h-[90vh] shadow-2xl flex flex-col overflow-hidden">
-            <CardHeader className="flex flex-row items-center justify-between gap-2 py-3">
-              <CardTitle className="text-base sm:text-lg">Purchase Order Details</CardTitle>
-              <Button variant="ghost" onClick={() => setViewingPO(null)} className="h-8 w-8 px-0">✕</Button>
-            </CardHeader>
-            <CardContent className="flex-1 overflow-y-auto po-details-scroll space-y-3 sm:space-y-4">
-              <style
-                dangerouslySetInnerHTML={{
-                  __html: `
-                    @media (max-width: 768px) {
-                      .po-details-scroll::-webkit-scrollbar { display: none; }
-                      .po-details-scroll { -ms-overflow-style: none; scrollbar-width: none; }
-                    }
-                  `,
-                }}
-              />
-
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 sm:gap-4">
-                <div>
-                  <p className="text-xs text-gray-500">PO No</p>
-                  <p className="font-semibold break-words">{viewingPO.poNo}</p>
-                </div>
-                <div>
-                  <p className="text-xs text-gray-500">Supplier</p>
-                  <p className="font-semibold break-words">{viewingPO.supplierName}</p>
-                </div>
-                <div>
-                  <p className="text-xs text-gray-500">Status</p>
-                  <p className="font-semibold break-words capitalize">{viewingPO.status}</p>
-                </div>
-                <div>
-                  <p className="text-xs text-gray-500">Request Date</p>
-                  <p className="font-semibold">{formatDate(viewingPO.orderDate)}</p>
-                </div>
-                <div>
-                  <p className="text-xs text-gray-500">Receive Date</p>
-                  <p className="font-semibold">{formatDate((viewingPO as any).receivedAt)}</p>
-                </div>
-                <div>
-                  <p className="text-xs text-gray-500">Grand Total</p>
-                  <p className="font-semibold">{Number(viewingPO.totalAmount || 0).toLocaleString()}</p>
-                </div>
-              </div>
-
-              <div>
-                <p className="text-xs text-gray-500 mb-2">Items</p>
-                <div className="border rounded-md overflow-hidden">
-                  <div className="w-full overflow-x-auto">
-                    <table className="w-full text-sm min-w-[520px]">
-                    <thead className="bg-gray-50">
-                      <tr className="text-left">
-                        <th className="px-3 py-2 whitespace-nowrap">Part No</th>
-                        <th className="px-3 py-2 whitespace-nowrap">Qty</th>
-                        <th className="px-3 py-2 whitespace-nowrap">Unit Price</th>
-                        <th className="px-3 py-2 whitespace-nowrap">Total</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {(viewingPO.items || []).map((it: any, idx: number) => (
-                        <tr key={idx} className="border-t">
-                          <td className="px-3 py-2 font-medium break-words min-w-[180px]">{it.partNo}</td>
-                          <td className="px-3 py-2 whitespace-nowrap">{it.quantity}</td>
-                          <td className="px-3 py-2 whitespace-nowrap">{Number(it.unitPrice || 0).toLocaleString()}</td>
-                          <td className="px-3 py-2 whitespace-nowrap">{Number(it.totalPrice || 0).toLocaleString()}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                    </table>
-                  </div>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
+        <PurchaseOrderDetailsModal po={viewingPO} onClose={() => setViewingPO(null)} title="Purchase Order Details" />
       )}
 
       {/* Receive PO Section (shows instead of list) */}
@@ -780,99 +800,101 @@ export default function PurchaseOrdersPage() {
               <Button variant="ghost" onClick={() => setReceivingPO(null)}>✕</Button>
             </div>
           </CardHeader>
-          <CardContent className="p-6 space-y-6">
-            {/* PO Details Section */}
-            <div className="bg-gray-50 p-4 rounded-lg border">
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-6 items-start">
-                <div className="space-y-2">
-                  <Label className="text-sm font-medium text-gray-700 block">PO NO</Label>
-                  <Input value={receivingPO.poNo} disabled readOnly className="w-full bg-gray-100 cursor-not-allowed" />
-                </div>
-                <div className="space-y-2">
-                  <Label className="text-sm font-medium text-gray-700 block">Supplier</Label>
-                  <Input value={receivingPO.supplierName} disabled readOnly className="w-full bg-gray-100 cursor-not-allowed" />
-                </div>
-                <div className="space-y-2">
-                  <Label className="text-sm font-medium text-gray-700 block">Store</Label>
-                  <Select
-                    value={selectedStore}
-                    onChange={(e) => {
-                      setSelectedStore(e.target.value);
-                      fetchRacks();
-                    }}
-                    className="w-full"
-                  >
-                    <option value="">Select Store...</option>
-                    {availableStores.map((store: any) => (
-                      <option key={store.id || store.name} value={store.name}>
-                        {store.name}
-                      </option>
-                    ))}
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label className="text-sm font-medium text-gray-700 block">Request Date</Label>
-                  <Input value={formatDate(receivingPO.orderDate)} disabled readOnly className="w-full bg-gray-100 cursor-not-allowed" />
-                </div>
-                <div className="space-y-2">
-                  <Label className="text-sm font-medium text-gray-700 block">Received Date</Label>
-                  <Input
-                    type="date"
-                    value={receiveDate}
-                    onChange={(e) => setReceiveDate(e.target.value)}
-                    className="w-full"
-                  />
-                </div>
-              </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-4">
-                <div className="space-y-2">
-                  <Label className="text-sm font-medium text-gray-700 block">Currency</Label>
-                  <Select
-                    value={selectedCurrency}
-                    onChange={(e) => {
-                      setSelectedCurrency(e.target.value);
-                      // Reset rate to 1 when currency changes
-                      setCurrencyRate(1);
-                    }}
-                    className="w-full"
-                  >
-                    {currencies.map((currency) => (
-                      <option key={currency.code} value={currency.code}>
-                        {currency.symbol} {currency.name} ({currency.code})
-                      </option>
-                    ))}
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label className="text-sm font-medium text-gray-700 block">
-                    {currencies.find(c => c.code === selectedCurrency)?.name || 'Currency'} Rate (PKR)
-                  </Label>
-                  <Input
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    value={currencyRate}
-                    onChange={(e) => setCurrencyRate(parseFloat(e.target.value) || 1)}
-                    className="w-full border-orange-300 focus:border-orange-500"
-                    placeholder="Enter rate..."
-                  />
-                </div>
-              </div>
-              <div className="grid grid-cols-1 md:grid-cols-1 gap-6 mt-4">
-                <div className="space-y-2">
-                  <Label className="text-sm font-medium text-gray-700 block">Remarks</Label>
-                  <Input
-                    value={receiveRemarks}
-                    onChange={(e) => setReceiveRemarks(e.target.value)}
-                    placeholder="Enter remarks..."
-                    className="w-full"
-                  />
-                </div>
-              </div>
-            </div>
+          <CardContent className="p-6">
+            <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_minmax(420px,1fr)] 2xl:grid-cols-[minmax(0,1fr)_minmax(520px,1fr)] gap-6 items-start">
+              {/* LEFT */}
+              <div className="space-y-6">
+                {/* PO Details Section (single line on desktop) */}
+                <div className="bg-gray-50 p-4 rounded-lg border">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 2xl:grid-cols-7 gap-4 items-end">
+                    <div className="space-y-1 min-w-0">
+                      <Label className="text-xs font-medium text-gray-700 block">PO NO</Label>
+                      <Input value={receivingPO.poNo} disabled readOnly className="w-full bg-gray-100 cursor-not-allowed h-10" />
+                    </div>
+                    <div className="space-y-1 min-w-0">
+                      <Label className="text-xs font-medium text-gray-700 block">Supplier</Label>
+                      <Input value={receivingPO.supplierName} disabled readOnly className="w-full bg-gray-100 cursor-not-allowed h-10" />
+                    </div>
+                    <div className="space-y-1 min-w-0">
+                      <Label className="text-xs font-medium text-gray-700 block">Store</Label>
+                      <Select
+                        value={selectedStore}
+                        onChange={(e) => {
+                          setSelectedStore(e.target.value);
+                          fetchRacks();
+                        }}
+                        className="w-full h-10"
+                      >
+                        <option value="">Select Store...</option>
+                        {availableStores.map((store: any) => (
+                          <option key={store.id || store.name} value={store.name}>
+                            {store.name}
+                          </option>
+                        ))}
+                      </Select>
+                    </div>
+                    <div className="space-y-1 min-w-0">
+                      <Label className="text-xs font-medium text-gray-700 block">Request Date</Label>
+                      <Input value={formatDate(receivingPO.orderDate)} disabled readOnly className="w-full bg-gray-100 cursor-not-allowed h-10" />
+                    </div>
+                    <div className="space-y-1 min-w-0">
+                      <Label className="text-xs font-medium text-gray-700 block">Received Date</Label>
+                      <DatePicker
+                        value={receiveDate || undefined}
+                        onChange={(v) => setReceiveDate(v || '')}
+                        placeholder="Select date"
+                      />
+                    </div>
+                    {/* Currency + Rate (merged into one field group) */}
+                    <div className="space-y-1 min-w-0 2xl:col-span-2">
+                      <Label className="text-xs font-medium text-gray-700 block">Currency / Rate (PKR)</Label>
+                      <div className="flex h-10 w-full overflow-hidden rounded-md border border-orange-300 bg-white focus-within:ring-2 focus-within:ring-orange-500/20 focus-within:border-orange-500">
+                        <Select
+                          value={selectedCurrency}
+                          onChange={(e) => {
+                            setSelectedCurrency(e.target.value);
+                            setCurrencyRate(1);
+                          }}
+                          containerClassName="w-fit max-w-[110px] flex-none"
+                          className="h-10 w-fit max-w-[110px] border-0 bg-transparent pl-2 pr-7 text-xs focus:outline-none focus-visible:ring-0 focus-visible:ring-offset-0"
+                        >
+                          {currencies.map((currency) => (
+                            <option key={currency.code} value={currency.code}>
+                              {currency.symbol} {currency.code}
+                            </option>
+                          ))}
+                        </Select>
+                        <div className="w-px bg-orange-200" />
+                        <Input
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          value={currencyRate}
+                          onChange={(e) => setCurrencyRate(parseFloat(e.target.value) || 1)}
+                          className="h-10 flex-1 border-0 bg-transparent px-3 text-sm focus:outline-none focus:ring-0"
+                          placeholder="Rate"
+                        />
+                      </div>
+                    </div>
+                  </div>
 
+                  {/* Remarks (2nd row, expandable like description) */}
+                  <div className="mt-4">
+                    <Label className="text-xs font-medium text-gray-700 block mb-1">Remarks</Label>
+                    <Textarea
+                      value={receiveRemarks}
+                      onChange={(e) => setReceiveRemarks(e.target.value)}
+                      placeholder="Enter remarks..."
+                      rows={2}
+                      className="w-full border-gray-300 focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20 resize-y min-h-[48px]"
+                    />
+                  </div>
+                </div>
+
+                {/* Receive Sections */}
+                <div className="w-full">
             {/* Items Section */}
-            <div className="border rounded-lg overflow-hidden bg-white">
+            <div className="border rounded-lg overflow-hidden bg-white w-full">
               <div className="bg-gray-100 p-4 border-b">
                 <h3 className="text-lg font-medium text-gray-800">Items</h3>
               </div>
@@ -882,21 +904,32 @@ export default function PurchaseOrdersPage() {
                 </div>
               ) : (
                 <div className="overflow-x-auto">
-                  <table className="w-full text-sm border-collapse">
+                  <table className="w-full table-fixed text-sm border-collapse">
+                    <colgroup>
+                      {/* Let Item Description expand to fill remaining space (removes empty right gap) */}
+                      <col />
+                      <col className="w-[90px]" />
+                      <col className="w-[120px]" />
+                      <col className="w-[120px]" />
+                      <col className="w-[60px]" />
+                      <col className="w-[100px]" />
+                      <col className="w-[120px]" />
+                      <col className="w-[100px]" />
+                      <col className="w-[70px]" />
+                    </colgroup>
                     <thead className="bg-white border-b">
                       <tr className="text-gray-700">
-                        <th className="py-3 px-3 text-left font-medium">Item Description</th>
-                        <th className="py-3 px-3 text-left font-medium">Remarks</th>
-                        <th className="py-3 px-3 text-right font-medium">
+                        <th className="py-2 px-2 text-left font-medium">Item Description</th>
+                        <th className="py-2 px-2 text-right font-medium">
                           Price ({currencies.find(c => c.code === selectedCurrency)?.code || 'PKR'})
                         </th>
-                        <th className="py-3 px-3 text-right font-medium">Purchase Price(PKR)</th>
-                        <th className="py-3 px-3 text-right font-medium">Sale Price</th>
-                        <th className="py-3 px-3 text-right font-medium">Qty</th>
-                        <th className="py-3 px-3 text-right font-medium">Received Qty</th>
-                        <th className="py-3 px-3 text-right font-medium">Cost(PKR)</th>
-                        <th className="py-3 px-3 text-right font-medium">Amount</th>
-                        <th className="py-3 px-3 text-center font-medium">Remove</th>
+                        <th className="py-2 px-2 text-center font-medium whitespace-nowrap">Purchase Price(PKR)</th>
+                        <th className="py-2 px-2 text-center font-medium whitespace-nowrap">Sale Price</th>
+                        <th className="py-2 px-2 text-center font-medium whitespace-nowrap">Qty</th>
+                        <th className="py-2 px-2 text-center font-medium whitespace-nowrap">Received Qty</th>
+                        <th className="py-2 px-2 text-right font-medium whitespace-nowrap">Cost(PKR)</th>
+                        <th className="py-2 px-2 text-right font-medium whitespace-nowrap">Amount</th>
+                        <th className="py-2 px-2 text-center font-medium whitespace-nowrap">Remove</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -907,40 +940,52 @@ export default function PurchaseOrdersPage() {
                         
                         return (
                           <tr key={idx} className="border-b hover:bg-gray-50">
-                            <td className="py-3 px-3 font-medium text-gray-900">
+                            <td className="py-2 px-2 font-medium text-gray-900">
                               {item.partNo || 'N/A'} / {item.application || 'N/A'} / {item.brand || 'N/A'} / {item.description?.substring(0, 30) || '-'}
                             </td>
-                            <td className="py-3 px-3">
-                              <Input
-                                value={item.itemRemarks || ''}
-                                onChange={(e) => updateReceiveItem(idx, 'itemRemarks', e.target.value)}
-                                placeholder="Enter remarks..."
-                                className="w-full text-xs border-gray-300"
-                              />
+                            <td className="py-2 px-2 text-right font-medium">{Number(item.unitPrice || 0).toLocaleString()}</td>
+                            <td className="py-2 px-2 text-center">
+                              <div className="flex justify-center">
+                                <Input
+                                  type="number"
+                                  step="0.01"
+                                  min="0"
+                                  value={item.purchasePricePKR || 0}
+                                  onChange={(e) =>
+                                    updateReceiveItem(idx, 'purchasePricePKR', parseFloat(e.target.value) || 0)
+                                  }
+                                  className="!w-[90px] sm:!w-[100px] min-w-[90px] sm:min-w-[100px] max-w-[90px] sm:max-w-[100px] text-xs text-right border-gray-300"
+                                  size="sm"
+                                />
+                              </div>
                             </td>
-                            <td className="py-3 px-3 text-right font-medium">{Number(item.unitPrice || 0).toLocaleString()}</td>
-                            <td className="py-3 px-3 text-right font-medium">{Number(item.purchasePricePKR || 0).toLocaleString()}</td>
-                            <td className="py-3 px-3">
-                              <Input
-                                type="number"
-                                step="0.01"
-                                min="0"
-                                value={item.salePrice || 0}
-                                onChange={(e) => updateReceiveItem(idx, 'salePrice', parseFloat(e.target.value) || 0)}
-                                className="w-full text-xs text-right border-gray-300"
-                              />
+                            <td className="py-2 px-2 text-center">
+                              <div className="flex justify-center">
+                                <Input
+                                  type="number"
+                                  step="0.01"
+                                  min="0"
+                                  value={item.salePrice || 0}
+                                  onChange={(e) => updateReceiveItem(idx, 'salePrice', parseFloat(e.target.value) || 0)}
+                                  className="!w-[90px] sm:!w-[100px] min-w-[90px] sm:min-w-[100px] max-w-[90px] sm:max-w-[100px] text-xs text-right border-gray-300"
+                                  size="sm"
+                                />
+                              </div>
                             </td>
-                            <td className="py-3 px-3 text-right font-medium">{item.quantity}</td>
-                            <td className="py-3 px-3">
-                              <Input
-                                type="number"
-                                min="0"
-                                value={receivedQty}
-                                onChange={(e) => updateReceiveItem(idx, 'receivedQty', parseInt(e.target.value) || 0)}
-                                className="w-full text-xs text-right border-gray-300"
-                              />
+                            <td className="py-2 px-2 text-center font-medium">{item.quantity}</td>
+                            <td className="py-2 px-2 text-center">
+                              <div className="flex justify-center">
+                                <Input
+                                  type="number"
+                                  min="0"
+                                  value={receivedQty}
+                                  onChange={(e) => updateReceiveItem(idx, 'receivedQty', parseInt(e.target.value) || 0)}
+                                  className="!w-[70px] sm:!w-[80px] min-w-[70px] sm:min-w-[80px] max-w-[70px] sm:max-w-[80px] text-xs text-right border-gray-300"
+                                  size="sm"
+                                />
+                              </div>
                             </td>
-                            <td className="py-3 px-3 text-right">
+                            <td className="py-2 px-2 text-right">
                               <div className="space-y-0.5">
                                 <div className="font-medium">{Number(costPKR).toLocaleString()}</div>
                                 <div className="text-xs text-gray-600">
@@ -949,15 +994,15 @@ export default function PurchaseOrdersPage() {
                                 <div className="text-xs text-gray-600">100%</div>
                               </div>
                             </td>
-                            <td className="py-3 px-3 text-right font-semibold text-gray-900">{Number(item.amount || 0).toLocaleString()}</td>
-                            <td className="py-3 px-3 text-center">
+                            <td className="py-2 px-2 text-right font-semibold text-gray-900">{Number(item.amount || 0).toLocaleString()}</td>
+                            <td className="py-2 px-2 text-center">
                               <Button
                                 type="button"
                                 onClick={() => {
                                   const updated = receiveItems.filter((_, i) => i !== idx);
                                   setReceiveItems(updated);
                                 }}
-                                className="w-10 h-10 rounded-full bg-red-500 hover:bg-red-600 text-white border-0 shadow-md hover:shadow-lg transition-all flex items-center justify-center p-0"
+                                className="w-9 h-9 rounded-full bg-red-500 hover:bg-red-600 text-white border-0 shadow-md hover:shadow-lg transition-all flex items-center justify-center p-0"
                                 title="Remove item"
                               >
                                 <span className="text-lg font-bold">×</span>
@@ -973,7 +1018,7 @@ export default function PurchaseOrdersPage() {
             </div>
 
             {/* Rack and Shelves Section */}
-            <div className="border rounded-lg p-4">
+            <div className="border rounded-lg p-4 w-full">
               <div className="flex items-center justify-between mb-4">
                 <h3 className="text-lg font-medium text-gray-800">Rack and Shelves</h3>
                 <div className="flex gap-2">
@@ -1018,7 +1063,7 @@ export default function PurchaseOrdersPage() {
             {(() => {
               const totals = calculateReceiveTotals();
               return (
-                <div className="border rounded-lg p-4 bg-gray-50">
+                <div className="border rounded-lg p-4 bg-gray-50 w-full">
                   <div className="grid grid-cols-2 md:grid-cols-6 gap-4">
                     <div className="space-y-2">
                       <Label className="text-sm font-medium text-gray-700 block">Total</Label>
@@ -1063,7 +1108,7 @@ export default function PurchaseOrdersPage() {
             })()}
 
             {/* Expenses Section */}
-            <div className="border rounded-lg overflow-hidden">
+            <div className="border rounded-lg overflow-hidden w-full">
               <div className="bg-gray-100 p-4 border-b flex items-center justify-between">
                 <h3 className="text-lg font-medium text-gray-800">Expense Type</h3>
                 <Button
@@ -1200,6 +1245,198 @@ export default function PurchaseOrdersPage() {
               >
                 {loading ? 'Processing...' : 'Confirm Receive'}
               </Button>
+            </div>
+            </div>
+              </div>
+
+              {/* RIGHT: Current Stock + History */}
+              <div className="self-stretch">
+                {(() => {
+                  const totals = calculateReceiveTotals();
+                  const it = selectedReceiveItem;
+                  const last = it?.partNo ? lastPurchaseDateByPartNo.get(it.partNo) : undefined;
+                  const unitPurchasePKR = Number(it?.purchasePricePKR || 0);
+                  const recvQty = Number(it?.receivedQty || it?.quantity || 0);
+                  const unitSale = Number(it?.salePrice || 0);
+                  const estMargin = unitSale - unitPurchasePKR;
+                  const estMarginPct = unitPurchasePKR > 0 ? (estMargin / unitPurchasePKR) * 100 : 0;
+                  const estLineCost = recvQty * unitPurchasePKR;
+                  return (
+                    <div className="rounded-2xl bg-white shadow-md border border-gray-200 overflow-hidden xl:sticky xl:top-6 h-[calc(100vh-140px)] flex flex-col">
+                      <div className="px-5 py-4 border-b bg-gradient-to-r from-gray-50 to-white flex items-center justify-between">
+                        <div>
+                          <div className="text-sm font-semibold text-gray-900">Stock & History</div>
+                          <div className="text-xs text-gray-500">Checkout-style insights for receiving</div>
+                        </div>
+                        <div className="flex gap-2">
+                          <button
+                            type="button"
+                            onClick={() => setReceiveSideTab('stock')}
+                            className={`text-xs px-3 py-1.5 rounded-lg border ${
+                              receiveSideTab === 'stock'
+                                ? 'bg-primary-50 border-primary-300 text-primary-700'
+                                : 'bg-white border-gray-200 text-gray-700 hover:bg-gray-50'
+                            }`}
+                          >
+                            Stock
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setReceiveSideTab('history')}
+                            className={`text-xs px-3 py-1.5 rounded-lg border ${
+                              receiveSideTab === 'history'
+                                ? 'bg-primary-50 border-primary-300 text-primary-700'
+                                : 'bg-white border-gray-200 text-gray-700 hover:bg-gray-50'
+                            }`}
+                          >
+                            History
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="p-5 space-y-4 flex-1 overflow-y-auto min-h-0">
+                        {/* Selector */}
+                        <div className="space-y-2">
+                          <Label className="text-xs text-gray-600">Select Item</Label>
+                          <Select
+                            value={selectedHistoryPartNo}
+                            onChange={(e) => setSelectedHistoryPartNo(e.target.value)}
+                            className="w-full"
+                          >
+                            {(receiveItems || []).map((it: any, idx: number) => (
+                              <option key={`${it.partNo}-${idx}`} value={it.partNo || ''}>
+                                {it.partNo || `Item ${idx + 1}`}
+                              </option>
+                            ))}
+                          </Select>
+                        </div>
+
+                        {/* Selected Item Card */}
+                        <div className="border rounded-xl p-4 bg-gray-50">
+                          <div className="text-sm font-semibold text-gray-900 break-words">{it?.partNo || '-'}</div>
+                          <div className="text-xs text-gray-600 break-words mt-0.5">{it?.description || '-'}</div>
+                          <div className="grid grid-cols-2 gap-3 mt-3">
+                            <div>
+                              <div className="text-[11px] text-gray-500">Current Stock</div>
+                              <div className="text-lg font-bold text-gray-900">
+                                {Number(it?.stockQuantity || 0).toLocaleString()}
+                              </div>
+                            </div>
+                            <div>
+                              <div className="text-[11px] text-gray-500">Last Purchase Date</div>
+                              <div className="text-sm font-semibold text-gray-900">{last ? formatDate(last) : '-'}</div>
+                            </div>
+                          </div>
+                          <div className="grid grid-cols-2 gap-3 mt-3">
+                            <div>
+                              <div className="text-[11px] text-gray-500">Purchase (PKR / unit)</div>
+                              <div className="text-sm font-semibold text-gray-900">{unitPurchasePKR.toLocaleString()}</div>
+                            </div>
+                            <div>
+                              <div className="text-[11px] text-gray-500">Sale (unit)</div>
+                              <div className="text-sm font-semibold text-gray-900">{unitSale.toLocaleString()}</div>
+                            </div>
+                            <div>
+                              <div className="text-[11px] text-gray-500">Received Qty</div>
+                              <div className="text-sm font-semibold text-gray-900">{recvQty.toLocaleString()}</div>
+                            </div>
+                            <div>
+                              <div className="text-[11px] text-gray-500">Est. Margin</div>
+                              <div className="text-sm font-semibold text-gray-900">
+                                {estMargin.toLocaleString()} ({estMarginPct ? estMarginPct.toFixed(1) : '0.0'}%)
+                              </div>
+                            </div>
+                          </div>
+                          <div className="mt-3 flex items-center justify-between text-xs">
+                            <div className="text-gray-500">Line Cost (est.)</div>
+                            <div className="font-semibold text-gray-900">{estLineCost.toLocaleString()}</div>
+                          </div>
+                        </div>
+
+                        {/* Order Summary */}
+                        <div className="border rounded-xl p-4 bg-white">
+                          <div className="flex items-center justify-between">
+                            <div className="text-sm font-semibold text-gray-900">Order Summary</div>
+                            <div className="text-xs text-gray-500">{selectedCurrency} @ {currencyRate}</div>
+                          </div>
+                          <div className="mt-3 space-y-2 text-sm">
+                            <div className="flex items-center justify-between">
+                              <span className="text-gray-600">Items Total (PKR)</span>
+                              <span className="font-semibold">{totals.total.toLocaleString()}</span>
+                            </div>
+                            <div className="flex items-center justify-between">
+                              <span className="text-gray-600">Discount (PKR)</span>
+                              <span className="font-semibold">{receiveDiscount.toLocaleString()}</span>
+                            </div>
+                            <div className="flex items-center justify-between">
+                              <span className="text-gray-600">Expenses (PKR)</span>
+                              <span className="font-semibold">{totals.totalExpenses.toLocaleString()}</span>
+                            </div>
+                            <div className="pt-2 border-t flex items-center justify-between">
+                              <span className="text-gray-900 font-semibold">Payable (PKR)</span>
+                              <span className="text-gray-900 font-bold">
+                                {(totals.totalAfterDiscount + totals.totalExpenses).toLocaleString()}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Tab content */}
+                        {receiveSideTab === 'stock' ? (
+                          <div className="border rounded-xl overflow-hidden">
+                            <div className="bg-white px-4 py-2 text-xs font-semibold text-gray-700 border-b">
+                              All Items Stock
+                            </div>
+                            <div className="divide-y">
+                              {(receiveItems || []).map((it: any, idx: number) => (
+                                <button
+                                  key={idx}
+                                  type="button"
+                                  onClick={() => setSelectedHistoryPartNo(it.partNo || '')}
+                                  className={`w-full text-left px-4 py-3 text-xs hover:bg-gray-50 ${
+                                    selectedHistoryPartNo === it.partNo ? 'bg-primary-50' : 'bg-white'
+                                  }`}
+                                >
+                                  <div className="flex items-center justify-between gap-3">
+                                    <div className="truncate font-medium">{it.partNo || '-'}</div>
+                                    <div className="font-semibold">{Number(it.stockQuantity || 0).toLocaleString()}</div>
+                                  </div>
+                                  <div className="mt-1 text-[11px] text-gray-500 truncate">{it.description || '-'}</div>
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="border rounded-xl overflow-hidden">
+                            <div className="bg-white px-4 py-2 text-xs font-semibold text-gray-700 border-b">
+                              History (latest 10)
+                            </div>
+                            <div className="divide-y">
+                              {selectedHistoryRows.length === 0 ? (
+                                <div className="px-4 py-4 text-xs text-gray-500">No history found.</div>
+                              ) : (
+                                selectedHistoryRows.map((r, i) => (
+                                  <div key={r.id || i} className="px-4 py-3 text-xs">
+                                    <div className="flex items-center justify-between gap-3">
+                                      <div className="font-semibold truncate">{r.poNo}</div>
+                                      <div className="text-gray-600">{formatDate(r.date)}</div>
+                                    </div>
+                                    <div className="flex items-center justify-between gap-3 mt-1">
+                                      <div className="text-gray-600 truncate">{r.supplier || '-'}</div>
+                                      <div className="font-medium">Qty: {Number(r.qty || 0).toLocaleString()}</div>
+                                    </div>
+                                    <div className="mt-1 text-[11px] text-gray-500 capitalize">Status: {r.status}</div>
+                                  </div>
+                                ))
+                              )}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })()}
+              </div>
             </div>
           </CardContent>
         </Card>
