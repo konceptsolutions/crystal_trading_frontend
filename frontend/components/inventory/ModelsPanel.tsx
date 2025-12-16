@@ -243,32 +243,34 @@ export default function ModelsPanel({
               <TableBody>
                 {models && models.length > 0 ? (
                   models.map((model, index) => {
-                    console.log(`ModelsPanel: Rendering model ${index}:`, model);
+                    // IMPORTANT: keep key stable while typing (do NOT include modelNo)
+                    const rowKey = model.id && model.id.trim().length > 0 ? model.id : `new-${index}`;
                     return (
-                      <TableRow key={`${model.id || 'new'}-${index}-${model.modelNo}`} className="border-b border-gray-100 hover:bg-gray-50">
+                      <TableRow key={rowKey} className="border-b border-gray-100 hover:bg-gray-50">
                         <TableCell className="px-2 py-1.5">
-                          <Input
-                            value={model.modelNo || ''}
-                            onChange={(e) => updateModel(index, 'modelNo', e.target.value)}
-                            placeholder="Enter model number"
-                            className="h-7 text-xs border-gray-200 focus:border-primary-400"
-                          />
-                        </TableCell>
-                        <TableCell className="px-2 py-1.5">
-                          <div className="flex items-center justify-end gap-1">
+                          <div className="flex items-center gap-1">
+                            <Input
+                              value={model.modelNo || ''}
+                              onChange={(e) => updateModel(index, 'modelNo', e.target.value)}
+                              placeholder="Enter model number"
+                              className="h-7 text-xs border-gray-200 focus:border-primary-400"
+                            />
                             <Button
                               type="button"
                               variant="ghost"
                               size="sm"
                               onClick={() => removeModel(index)}
-                              className="h-6 w-6 p-0 text-gray-400 hover:text-red-600 hover:bg-red-50"
-                              title="Delete"
-                              disabled={models.length <= 1}
+                              className="h-7 w-7 p-0 text-gray-400 hover:text-red-600 hover:bg-red-50 flex-shrink-0"
+                              title={models.length > 1 ? 'Remove row' : 'Clear row'}
                             >
                               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                               </svg>
                             </Button>
+                          </div>
+                        </TableCell>
+                        <TableCell className="px-2 py-1.5">
+                          <div className="flex items-center justify-end gap-1">
                             <Input
                               type="number"
                               min="1"

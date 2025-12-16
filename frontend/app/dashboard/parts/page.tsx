@@ -481,7 +481,9 @@ export default function PartsPage() {
         }}
       >
         <ModelsPanel 
-          key={`models-${selectedPart?.id || 'new'}-${currentModels.map(m => m.modelNo).join('-')}`}
+          // IMPORTANT: keep this key stable while typing in model inputs.
+          // Using modelNo here causes ModelsPanel to remount on each keystroke (losing focus).
+          key={`models-${selectedPart?.id || 'new'}`}
           partId={selectedPart?.id} 
           partName={selectedPart?.partNo || selectedPart?.description || ''}
           stockQuantity={(selectedPart as any)?.stock?.quantity ?? 0}
