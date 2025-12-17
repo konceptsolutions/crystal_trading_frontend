@@ -15,8 +15,9 @@ import ApprovalFlows from './components/ApprovalFlows';
 import ActivityLogs from './components/ActivityLogs';
 import BackupRestore from './components/BackupRestore';
 import CompanyProfile from './components/CompanyProfile';
+import StoresManagement from './components/StoresManagement';
 
-type TabType = 'users' | 'roles' | 'approvals' | 'logs' | 'backup' | 'company';
+type TabType = 'users' | 'roles' | 'approvals' | 'logs' | 'backup' | 'company' | 'stores';
 
 interface TabConfig {
   id: TabType;
@@ -91,6 +92,18 @@ export default function AdminPage() {
         </svg>
       ),
     },
+    {
+      id: 'stores',
+      label: 'Store Management',
+      description: 'Create stores and link them with racks and shelves',
+      icon: (
+        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7l9-4 9 4-9 4-9-4z" />
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7v10l9 4 9-4V7" />
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 11v10" />
+        </svg>
+      ),
+    },
   ];
 
   const renderTabContent = () => {
@@ -107,6 +120,8 @@ export default function AdminPage() {
         return <BackupRestore />;
       case 'company':
         return <CompanyProfile />;
+      case 'stores':
+        return <StoresManagement />;
       default:
         return <UsersManagement />;
     }

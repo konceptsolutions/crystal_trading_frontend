@@ -116,6 +116,20 @@ export default function DirectPurchaseOrdersPage() {
     calculateTotals();
   }, [formData.items, formData.tax, formData.discount]);
 
+  // Prevent background scrolling when the create/edit form is open (fullscreen overlay)
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    if (!showForm) return;
+    const prevBodyOverflow = document.body.style.overflow;
+    const prevHtmlOverflow = document.documentElement.style.overflow;
+    document.body.style.overflow = 'hidden';
+    document.documentElement.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = prevBodyOverflow;
+      document.documentElement.style.overflow = prevHtmlOverflow;
+    };
+  }, [showForm]);
+
   const fetchPurchaseOrders = async () => {
     try {
       setLoading(true);
@@ -616,19 +630,20 @@ export default function DirectPurchaseOrdersPage() {
 
       {/* Form */}
       {showForm && !receivingPO && (
-        <Card className="shadow-lg border-2 border-primary-200 animate-fade-in">
-          <CardHeader className="bg-gradient-to-r from-primary-50 to-orange-50 border-b">
-            <div className="flex items-center justify-between">
-              <CardTitle className="text-xl">
-                {selectedPO ? 'Edit Direct Purchase Order' : 'Create New Direct Purchase Order'}
-              </CardTitle>
-              <Button variant="ghost" onClick={() => { setShowForm(false); resetForm(); }}>
-                ✕
-              </Button>
-            </div>
-          </CardHeader>
-          <CardContent className="p-6">
-            <form onSubmit={handleSubmit} className="space-y-6">
+        <div className="fixed inset-0 z-[220] bg-black/40 flex items-start justify-center p-2 sm:p-4 overflow-y-auto">
+          <Card className="w-[min(98vw,90rem)] max-h-[92vh] shadow-2xl flex flex-col overflow-hidden border-2 border-primary-200 animate-fade-in">
+            <CardHeader className="bg-gradient-to-r from-primary-50 to-orange-50 border-b flex-shrink-0">
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-xl">
+                  {selectedPO ? 'Edit Direct Purchase Order' : 'Create New Direct Purchase Order'}
+                </CardTitle>
+                <Button variant="ghost" onClick={() => { setShowForm(false); resetForm(); }}>
+                  ✕
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent className="p-6 flex-1 overflow-y-auto">
+              <form onSubmit={handleSubmit} className="space-y-6">
               {/* Main Direct Purchase Order Fields - Professional Single Line Layout */}
               <div className="bg-gray-50 p-4 rounded-lg border">
                 <div className="grid grid-cols-6 gap-6 items-start">
@@ -876,13 +891,14 @@ export default function DirectPurchaseOrdersPage() {
                   </Button>
                 </div>
               </div>
-            </form>
-          </CardContent>
-        </Card>
+              </form>
+            </CardContent>
+          </Card>
+        </div>
       )}
 
       {/* Direct Purchase Orders List */}
-      {!receivingPO && (
+      {!receivingPO && !showForm && (
       <Card className="shadow-lg">
         <CardHeader className="bg-gradient-to-r from-gray-50 to-gray-100 border-b">
           <div className="flex flex-wrap items-center gap-4">

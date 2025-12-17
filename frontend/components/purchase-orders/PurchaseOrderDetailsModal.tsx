@@ -21,6 +21,15 @@ function num(value: any) {
   return Number.isFinite(n) ? n : 0;
 }
 
+function safeParseJson(value: any) {
+  if (!value || typeof value !== 'string') return null;
+  try {
+    return JSON.parse(value);
+  } catch {
+    return null;
+  }
+}
+
 type ItemColKey =
   | 'sr'
   | 'partNo'
@@ -42,8 +51,14 @@ export default function PurchaseOrderDetailsModal({
   onClose,
   title = 'Purchase Order Details',
 }: PurchaseOrderDetailsModalProps) {
-  const receiveData = (po as any)?.receiveData || {};
-  const store = receiveData?.store || (po as any)?.store || '-';
+  const receiveData =
+    (typeof (po as any)?.receiveData === 'string' ? safeParseJson((po as any)?.receiveData) : (po as any)?.receiveData) || {};
+  const store =
+    receiveData?.storeName ||
+    receiveData?.store?.name ||
+    receiveData?.store ||
+    (po as any)?.store ||
+    '-';
 
   const items: any[] = Array.isArray(receiveData?.items) && receiveData.items.length > 0 ? receiveData.items : (po?.items || []);
   const expenses: any[] = Array.isArray(receiveData?.expenses) ? receiveData.expenses : [];
@@ -161,6 +176,9 @@ export default function PurchaseOrderDetailsModal({
     costUnit: true,
     remarks: true,
   });
+  const [pdfUrl, setPdfUrl] = useState('');
+  const [pdfName, setPdfName] = useState('');
+  const [pdfLoading, setPdfLoading] = useState(false);
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
@@ -169,6 +187,12 @@ export default function PurchaseOrderDetailsModal({
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [onClose]);
+
+  useEffect(() => {
+    return () => {
+      if (pdfUrl) URL.revokeObjectURL(pdfUrl);
+    };
+  }, [pdfUrl]);
 
   const handlePrint = () => {
     if (typeof window === 'undefined') return;
@@ -293,6 +317,71 @@ export default function PurchaseOrderDetailsModal({
         document.body.removeChild(iframe);
       } catch {}
     }, 500);
+  };
+
+  const handleGeneratePdf = async () => {
+    if (typeof window === 'undefined') return;
+    try {
+      setPdfLoading(true);
+      if (pdfUrl) URL.revokeObjectURL(pdfUrl);
+      setPdfUrl('');
+      setPdfName('');
+
+      const heading = 'Purchase Invoice';
+      const selected = itemCols.filter(c => selectedCols[c.key]);
+      const headers = selected.map(c => c.label);
+      const body = (items || []).map((it: any, idx: number) => selected.map(c => String(c.get(it, idx) ?? '')));
+
+      const { jsPDF } = await import('jspdf');
+      const autoTableMod: any = await import('jspdf-autotable');
+      const autoTable = autoTableMod.default || autoTableMod;
+
+      const doc = new jsPDF({ orientation: 'landscape', unit: 'pt', format: 'a4' });
+
+      const poNo = String(po?.poNo ?? '-');
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(14);
+      doc.text(heading, 40, 34);
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(10);
+      doc.text(
+        `PO No.: ${poNo}   |   Supplier: ${String(po?.supplierName ?? '-')}   |   Store: ${String(
+          store
+        )}   |   Date: ${String(formatDate(po?.orderDate))}   |   Status: ${String(po?.status ?? '-')}`,
+        40,
+        54
+      );
+
+      autoTable(doc, {
+        head: [headers],
+        body,
+        startY: 70,
+        styles: { fontSize: 8, cellPadding: 4, overflow: 'linebreak' },
+        headStyles: { fillColor: [243, 244, 246], textColor: [17, 24, 39], fontStyle: 'bold' },
+        alternateRowStyles: { fillColor: [250, 250, 250] },
+        margin: { left: 40, right: 40 },
+      });
+
+      const y = (doc as any).lastAutoTable?.finalY ? (doc as any).lastAutoTable.finalY + 14 : 560;
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(10);
+      doc.text(`Total Amount: ${currency} ${computedTotalAmount.toLocaleString()}`, 40, y);
+      doc.text(`Discount: ${currency} ${computedDiscount.toLocaleString()}`, 40, y + 14);
+      doc.text(`Grand Total: ${currency} ${computedGrandTotal.toLocaleString()}`, 40, y + 28);
+      doc.setFont('helvetica', 'normal');
+      doc.text(`Total Expenses: ${currency} ${computedTotalExpenses.toLocaleString()}`, 40, y + 42);
+
+      const fileName = `Invoice-${poNo}.pdf`;
+      const blob = doc.output('blob');
+      const url = URL.createObjectURL(blob);
+      setPdfName(fileName);
+      setPdfUrl(url);
+    } catch (e) {
+      console.error('PDF generation failed:', e);
+      alert('Failed to generate PDF. Please try again.');
+    } finally {
+      setPdfLoading(false);
+    }
   };
 
   return (
@@ -710,18 +799,42 @@ export default function PurchaseOrderDetailsModal({
             </div>
           </div>
 
-          {/* Footer buttons */}
-          <div className="mt-4 flex items-center justify-between gap-3">
+        </CardContent>
+
+        {/* Sticky footer actions (always visible) */}
+        <div className="border-t bg-white px-4 py-3">
+          <div className="flex items-center justify-between gap-3">
             <Button type="button" variant="ghost" onClick={onClose} className="text-sm text-primary-600">
               ⓧ Close
             </Button>
             <div className="flex items-center gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={handleGeneratePdf}
+                disabled={pdfLoading}
+                className="border-primary-300 text-primary-700 hover:bg-primary-50"
+              >
+                {pdfLoading ? 'Generating...' : 'Generate PDF'}
+              </Button>
               <Button type="button" onClick={handlePrint} className="bg-purple-700 hover:bg-purple-800">
                 PRINT
               </Button>
             </div>
           </div>
-        </CardContent>
+
+          {pdfUrl && (
+            <div className="mt-2 flex items-center justify-end gap-2 text-sm">
+              <a className="underline text-primary-700 hover:text-primary-800" href={pdfUrl} target="_blank" rel="noreferrer">
+                Open PDF
+              </a>
+              <span className="text-gray-400">|</span>
+              <a className="underline text-primary-700 hover:text-primary-800" href={pdfUrl} download={pdfName || 'invoice.pdf'}>
+                Download PDF
+              </a>
+            </div>
+          )}
+        </div>
       </Card>
     </div>
   );

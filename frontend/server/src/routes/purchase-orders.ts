@@ -23,6 +23,10 @@ const purchaseOrderSchema = z.object({
   discount: z.number().optional(),
   totalAmount: z.number().optional(),
   notes: z.string().optional(),
+  // Stored when receiving items (rack/shelf, prices, expenses, totals etc.)
+  receiveData: z.any().optional(),
+  // Allow client-selected receive date (ISO string)
+  receivedAt: z.string().optional(),
   items: z.array(z.object({
     partId: z.string().optional(),
     partNo: z.string().min(1),
@@ -377,7 +381,10 @@ router.put('/:id', async (req: AuthRequest, res) => {
     }
 
     if (data.status === 'received' && existing.status !== 'received') {
-      receivedAt = new Date();
+      receivedAt = data.receivedAt ? new Date(data.receivedAt) : new Date();
+    } else if (data.receivedAt) {
+      // Allow updating receive date explicitly (even if status was already received)
+      receivedAt = new Date(data.receivedAt);
     }
 
     // Delete existing items if new items are provided
@@ -387,10 +394,16 @@ router.put('/:id', async (req: AuthRequest, res) => {
       });
     }
 
+    const receiveDataValue =
+      data.receiveData === undefined
+        ? undefined
+        : (typeof data.receiveData === 'string' ? data.receiveData : JSON.stringify(data.receiveData));
+
     const purchaseOrder = await prisma.purchaseOrder.update({
       where: { id: req.params.id },
       data: {
         ...data,
+        receiveData: receiveDataValue,
         supplierId: data.type === 'purchase' ? (data.supplierId || null) : null,
         subTotal: data.items ? subTotal : undefined,
         totalAmount: data.items || data.discount !== undefined || data.tax !== undefined ? totalAmount : undefined,

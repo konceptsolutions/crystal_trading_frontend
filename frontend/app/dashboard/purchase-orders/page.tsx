@@ -94,6 +94,16 @@ export default function PurchaseOrdersPage() {
   const [receiveSideTab, setReceiveSideTab] = useState<'stock' | 'history'>('stock');
   const [selectedHistoryPartNo, setSelectedHistoryPartNo] = useState<string>('');
 
+  // Rack / Shelf assignment state (Receive screen)
+  const [selectedRackId, setSelectedRackId] = useState<string>('');
+  const [selectedShelfId, setSelectedShelfId] = useState<string>('');
+  const [isAddRackOpen, setIsAddRackOpen] = useState(false);
+  const [isAddShelfOpen, setIsAddShelfOpen] = useState(false);
+  const [newRackNumber, setNewRackNumber] = useState('');
+  const [newRackDescription, setNewRackDescription] = useState('');
+  const [newShelfNumber, setNewShelfNumber] = useState('');
+  const [newShelfDescription, setNewShelfDescription] = useState('');
+
   const lastPurchaseDateByPartNo = useMemo(() => {
     // Build last purchase date per partNo from existing PO list (prefer receivedAt, fallback to orderDate)
     const map = new Map<string, string>();
@@ -258,8 +268,8 @@ export default function PurchaseOrdersPage() {
 
   const fetchStores = async () => {
     try {
-      const response = await api.get('/parts-management/getStoredropdown');
-      setAvailableStores(response.data.store || []);
+      const response = await api.get('/stores?status=A');
+      setAvailableStores(response.data.stores || []);
     } catch (err) {
       console.error('Failed to fetch stores:', err);
     }
@@ -277,8 +287,8 @@ export default function PurchaseOrdersPage() {
 
   const fetchShelves = async (rackId?: string) => {
     try {
-      const params = rackId ? `?id=${rackId}` : '';
-      const response = await api.get(`/parts-management/getShelvesDropdown${params}`);
+      const params = rackId ? `?rackId=${encodeURIComponent(rackId)}&status=A` : '?status=A';
+      const response = await api.get(`/shelves${params}`);
       setAvailableShelves(response.data.shelves || []);
     } catch (err) {
       console.error('Failed to fetch shelves:', err);
@@ -560,6 +570,8 @@ export default function PurchaseOrdersPage() {
     setSelectedCurrency('PKR');
     setCurrencyRate(1);
     setSelectedStore('');
+    setSelectedRackId('');
+    setSelectedShelfId('');
     setReceiveDiscount(0);
     setExpenses([]);
     
@@ -613,7 +625,7 @@ export default function PurchaseOrdersPage() {
     setShowForm(false);
     setViewingPO(null);
     fetchRacks();
-    fetchShelves();
+    setAvailableShelves([]);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
@@ -691,6 +703,7 @@ export default function PurchaseOrdersPage() {
     try {
       setLoading(true);
       const totals = calculateReceiveTotals();
+      const selectedStoreObj = (availableStores || []).find((s: any) => String(s?.id) === String(selectedStore));
       
       await api.put(`/purchase-orders/${receivingPO.id}`, {
         status: 'received',
@@ -698,7 +711,8 @@ export default function PurchaseOrdersPage() {
         receivedAt: receiveDate,
         // Store receive data in notes or extend schema later
         receiveData: {
-          store: selectedStore,
+          storeId: selectedStore,
+          storeName: selectedStoreObj?.name || '',
           currency: selectedCurrency,
           currencyRate,
           items: receiveItems,
@@ -839,14 +853,18 @@ export default function PurchaseOrdersPage() {
                       <Select
                         value={selectedStore}
                         onChange={(e) => {
-                          setSelectedStore(e.target.value);
-                          fetchRacks();
+                          const nextStoreId = e.target.value;
+                          setSelectedStore(nextStoreId);
+                          setSelectedRackId('');
+                          setSelectedShelfId('');
+                          setAvailableShelves([]);
+                          fetchRacks(nextStoreId);
                         }}
                         className="w-full h-10"
                       >
                         <option value="">Select Store...</option>
                         {availableStores.map((store: any) => (
-                          <option key={store.id || store.name} value={store.name}>
+                          <option key={store.id || store.name} value={String(store.id || store.name)}>
                             {store.name}
                           </option>
                         ))}
@@ -1046,8 +1064,8 @@ export default function PurchaseOrdersPage() {
                     variant="outline"
                     size="sm"
                     onClick={() => {
-                      // TODO: Open modal to add new rack
-                      alert('Add New Rack functionality - to be implemented');
+                      setIsAddRackOpen((v) => !v);
+                      setIsAddShelfOpen(false);
                     }}
                   >
                     + Add New Rack
@@ -1057,8 +1075,8 @@ export default function PurchaseOrdersPage() {
                     variant="outline"
                     size="sm"
                     onClick={() => {
-                      // TODO: Open modal to add new shelf
-                      alert('Add New Shelf functionality - to be implemented');
+                      setIsAddShelfOpen((v) => !v);
+                      setIsAddRackOpen(false);
                     }}
                   >
                     + Add New Shelf
@@ -1068,12 +1086,288 @@ export default function PurchaseOrdersPage() {
                     className="bg-green-500 hover:bg-green-600 text-white"
                     size="sm"
                     onClick={() => {
-                      // TODO: Add rack/shelf to selected item
-                      alert('Add Rack/Shelf to item - to be implemented');
+                      if (!selectedHistoryPartNo) {
+                        showToast('Please select an item first.', 'error');
+                        return;
+                      }
+                      if (!selectedRackId) {
+                        showToast('Please select a rack.', 'error');
+                        return;
+                      }
+                      if (!selectedShelfId) {
+                        showToast('Please select a shelf.', 'error');
+                        return;
+                      }
+                      const rack = (availableRacks || []).find((r: any) => String(r.id) === String(selectedRackId));
+                      const shelf = (availableShelves || []).find((s: any) => String(s.id) === String(selectedShelfId));
+                      const rackNo = rack?.rackNumber || rack?.rack_number || rack?.name || '';
+                      const shelfNo = shelf?.shelfNumber || shelf?.shelf_number || shelf?.name || '';
+                      const idxToUpdate = (receiveItems || []).findIndex((it: any) => (it?.partNo || '') === selectedHistoryPartNo);
+                      if (idxToUpdate < 0) {
+                        showToast('Selected item not found.', 'error');
+                        return;
+                      }
+                      const updated = [...receiveItems];
+                      updated[idxToUpdate] = {
+                        ...updated[idxToUpdate],
+                        rackId: selectedRackId,
+                        rackNo,
+                        shelfId: selectedShelfId,
+                        shelfNo,
+                      };
+                      setReceiveItems(updated);
+                      showToast(`Assigned Rack ${rackNo || '-'} / Shelf ${shelfNo || '-'} to ${selectedHistoryPartNo}`, 'success');
                     }}
                   >
                     + Add
                   </Button>
+                </div>
+              </div>
+
+              {/* Inline Add Rack */}
+              {isAddRackOpen && (
+                <div className="mb-4 rounded-lg border bg-gray-50 p-4">
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="text-sm font-semibold text-gray-900">Add New Rack</div>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setIsAddRackOpen(false)}
+                      className="px-2"
+                      title="Close"
+                    >
+                      ✕
+                    </Button>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
+                    <div className="space-y-1">
+                      <Label className="text-xs font-medium text-gray-700">Store *</Label>
+                      <Select value={selectedStore} onChange={(e) => setSelectedStore(e.target.value)} className="w-full">
+                        <option value="">Select Store...</option>
+                        {availableStores.map((store: any) => (
+                          <option key={store.id || store.name} value={String(store.id || store.name)}>
+                            {store.name}
+                          </option>
+                        ))}
+                      </Select>
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs font-medium text-gray-700">Rack Number *</Label>
+                      <Input value={newRackNumber} onChange={(e) => setNewRackNumber(e.target.value)} placeholder="e.g. R001" className="w-full" />
+                    </div>
+                    <div className="space-y-1 md:col-span-3">
+                      <Label className="text-xs font-medium text-gray-700">Description</Label>
+                      <Textarea value={newRackDescription} onChange={(e) => setNewRackDescription(e.target.value)} rows={2} className="w-full resize-y" />
+                    </div>
+                    <div className="md:col-span-3 flex justify-end gap-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => {
+                          setNewRackNumber('');
+                          setNewRackDescription('');
+                          setIsAddRackOpen(false);
+                        }}
+                      >
+                        Cancel
+                      </Button>
+                      <Button
+                        type="button"
+                        onClick={async () => {
+                          if (!selectedStore) {
+                            showToast('Please select a store.', 'error');
+                            return;
+                          }
+                          if (!newRackNumber.trim()) {
+                            showToast('Rack number is required.', 'error');
+                            return;
+                          }
+                          try {
+                            setLoading(true);
+                            const resp = await api.post('/racks', {
+                              rackNumber: newRackNumber.trim(),
+                              storeId: String(selectedStore),
+                              description: newRackDescription.trim() || undefined,
+                              status: 'A',
+                            });
+                            const created = resp.data?.rack;
+                            await fetchRacks(String(selectedStore));
+                            if (created?.id) setSelectedRackId(String(created.id));
+                            setNewRackNumber('');
+                            setNewRackDescription('');
+                            setIsAddRackOpen(false);
+                            showToast('Rack created successfully', 'success');
+                          } catch (err: any) {
+                            showToast(err?.response?.data?.error || 'Failed to create rack', 'error');
+                          } finally {
+                            setLoading(false);
+                          }
+                        }}
+                        disabled={loading}
+                        className="bg-primary-500 hover:bg-primary-600 text-white"
+                      >
+                        {loading ? 'Saving...' : 'Save Rack'}
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Inline Add Shelf */}
+              {isAddShelfOpen && (
+                <div className="mb-4 rounded-lg border bg-gray-50 p-4">
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="text-sm font-semibold text-gray-900">Add New Shelf</div>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setIsAddShelfOpen(false)}
+                      className="px-2"
+                      title="Close"
+                    >
+                      ✕
+                    </Button>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
+                    <div className="space-y-1">
+                      <Label className="text-xs font-medium text-gray-700">Rack *</Label>
+                      <Select
+                        value={selectedRackId}
+                        onChange={(e) => {
+                          const v = e.target.value;
+                          setSelectedRackId(v);
+                          setSelectedShelfId('');
+                          if (v) fetchShelves(v);
+                        }}
+                        className="w-full"
+                      >
+                        <option value="">Select Rack...</option>
+                        {(availableRacks || []).map((r: any) => (
+                          <option key={r.id} value={String(r.id)}>
+                            {r.rackNumber || r.rack_number || r.name || r.id}
+                          </option>
+                        ))}
+                      </Select>
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs font-medium text-gray-700">Shelf Number *</Label>
+                      <Input value={newShelfNumber} onChange={(e) => setNewShelfNumber(e.target.value)} placeholder="e.g. S001" className="w-full" />
+                    </div>
+                    <div className="space-y-1 md:col-span-3">
+                      <Label className="text-xs font-medium text-gray-700">Description</Label>
+                      <Textarea value={newShelfDescription} onChange={(e) => setNewShelfDescription(e.target.value)} rows={2} className="w-full resize-y" />
+                    </div>
+                    <div className="md:col-span-3 flex justify-end gap-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => {
+                          setNewShelfNumber('');
+                          setNewShelfDescription('');
+                          setIsAddShelfOpen(false);
+                        }}
+                      >
+                        Cancel
+                      </Button>
+                      <Button
+                        type="button"
+                        onClick={async () => {
+                          if (!selectedRackId) {
+                            showToast('Please select a rack.', 'error');
+                            return;
+                          }
+                          if (!newShelfNumber.trim()) {
+                            showToast('Shelf number is required.', 'error');
+                            return;
+                          }
+                          try {
+                            setLoading(true);
+                            const resp = await api.post('/shelves', {
+                              shelfNumber: newShelfNumber.trim(),
+                              rackId: String(selectedRackId),
+                              description: newShelfDescription.trim() || undefined,
+                              status: 'A',
+                            });
+                            const created = resp.data?.shelf;
+                            await fetchShelves(String(selectedRackId));
+                            if (created?.id) setSelectedShelfId(String(created.id));
+                            setNewShelfNumber('');
+                            setNewShelfDescription('');
+                            setIsAddShelfOpen(false);
+                            showToast('Shelf created successfully', 'success');
+                          } catch (err: any) {
+                            showToast(err?.response?.data?.error || 'Failed to create shelf', 'error');
+                          } finally {
+                            setLoading(false);
+                          }
+                        }}
+                        disabled={loading}
+                        className="bg-primary-500 hover:bg-primary-600 text-white"
+                      >
+                        {loading ? 'Saving...' : 'Save Shelf'}
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
+                <div className="space-y-1">
+                  <Label className="text-xs font-medium text-gray-700">Rack</Label>
+                  <Select
+                    value={selectedRackId}
+                    onChange={(e) => {
+                      const nextRackId = e.target.value;
+                      setSelectedRackId(nextRackId);
+                      setSelectedShelfId('');
+                      if (nextRackId) fetchShelves(nextRackId);
+                      else setAvailableShelves([]);
+                    }}
+                    className="w-full"
+                  >
+                    <option value="">Select Rack...</option>
+                    {(availableRacks || []).map((r: any) => (
+                      <option key={r.id} value={String(r.id)}>
+                        {r.rackNumber || r.rack_number || r.name || r.id}
+                      </option>
+                    ))}
+                  </Select>
+                </div>
+
+                <div className="space-y-1">
+                  <Label className="text-xs font-medium text-gray-700">Shelf</Label>
+                  <Select
+                    value={selectedShelfId}
+                    onChange={(e) => setSelectedShelfId(e.target.value)}
+                    className="w-full"
+                    disabled={!selectedRackId}
+                  >
+                    <option value="">{selectedRackId ? 'Select Shelf...' : 'Select rack first'}</option>
+                    {(availableShelves || []).map((s: any) => (
+                      <option key={s.id} value={String(s.id)}>
+                        {s.shelfNumber || s.shelf_number || s.name || s.id}
+                      </option>
+                    ))}
+                  </Select>
+                </div>
+
+                <div className="text-xs text-gray-600">
+                  <div>
+                    Apply to item: <span className="font-semibold text-gray-900">{selectedHistoryPartNo || '-'}</span>
+                  </div>
+                  <div className="mt-1">
+                    Current:{" "}
+                    <span className="font-semibold text-gray-900">
+                      {(() => {
+                        const it = (receiveItems || []).find((x: any) => (x?.partNo || '') === (selectedHistoryPartNo || ''));
+                        const r = it?.rackNo || '-';
+                        const s = it?.shelfNo || '-';
+                        return `${r} / ${s}`;
+                      })()}
+                    </span>
+                  </div>
                 </div>
               </div>
             </div>
@@ -1460,6 +1754,8 @@ export default function PurchaseOrdersPage() {
           </CardContent>
         </Card>
       )}
+
+      {/* Add Rack/Shelf is now inline inside the Rack & Shelves section (no popup) */}
 
       {/* Form */}
       {showForm && !receivingPO && (

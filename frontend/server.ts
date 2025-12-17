@@ -4,6 +4,7 @@ import cors from 'cors';
 import dotenv from 'dotenv';
 import path from 'path';
 import { networkInterfaces } from 'os';
+import type { Server } from 'http';
 
 // Load environment variables from .env.local first, then .env
 dotenv.config({ path: path.resolve(process.cwd(), '.env.local') });
@@ -81,6 +82,9 @@ import accountsRoutes from './server/src/routes/accounts';
 import vehiclesRoutes from './server/src/routes/vehicles';
 import vehicleModelsRoutes from './server/src/routes/vehicle-models';
 import racksRoutes from './server/src/routes/racks';
+import shelvesRoutes from './server/src/routes/shelves';
+import storeTypesRoutes from './server/src/routes/store-types';
+import storesRoutes from './server/src/routes/stores';
 import brandsRoutes from './server/src/routes/brands';
 
 const app = next({ dev, hostname, port });
@@ -121,28 +125,35 @@ app.prepare().then(async () => {
 
   // Middleware
   server.use(cors());
-  server.use(express.json({ limit: '50mb' }));
-  server.use(express.urlencoded({ extended: true, limit: '50mb' }));
+  // NOTE:
+  // Do NOT register global body parsers here.
+  // This project uses a custom Next.js + Express server; global body parsing will consume the request stream
+  // and can break Next.js route handlers that need to read the body.
+  const jsonParser = express.json({ limit: '50mb' });
+  const urlEncodedParser = express.urlencoded({ extended: true, limit: '50mb' });
 
   // API Routes
   console.log('Registering API routes...');
-  server.use('/api/auth', authRoutes);
-  server.use('/api/parts', partsRoutes);
-  server.use('/api/models', modelsRoutes);
-  server.use('/api/categories', categoriesRoutes);
-  server.use('/api/brands', brandsRoutes);
-  server.use('/api/kits', kitsRoutes);
-  server.use('/api/purchase-orders', purchaseOrdersRoutes);
-  server.use('/api/suppliers', suppliersRoutes);
-  server.use('/api/sales-invoices', salesInvoicesRoutes);
-      server.use('/api/sales-inquiries', salesInquiriesRoutes);
-      server.use('/api/sales-quotations', salesQuotationsRoutes);
-      server.use('/api/delivery-challans', deliveryChallansRoutes);
-      server.use('/api/sales-returns', salesReturnsRoutes);
-  server.use('/api/accounts', accountsRoutes);
-  server.use('/api/vehicles', vehiclesRoutes);
-  server.use('/api/vehicle-models', vehicleModelsRoutes);
-  server.use('/api/racks', racksRoutes);
+  server.use('/api/auth', jsonParser, urlEncodedParser, authRoutes);
+  server.use('/api/parts', jsonParser, urlEncodedParser, partsRoutes);
+  server.use('/api/models', jsonParser, urlEncodedParser, modelsRoutes);
+  server.use('/api/categories', jsonParser, urlEncodedParser, categoriesRoutes);
+  server.use('/api/brands', jsonParser, urlEncodedParser, brandsRoutes);
+  server.use('/api/kits', jsonParser, urlEncodedParser, kitsRoutes);
+  server.use('/api/purchase-orders', jsonParser, urlEncodedParser, purchaseOrdersRoutes);
+  server.use('/api/suppliers', jsonParser, urlEncodedParser, suppliersRoutes);
+  server.use('/api/sales-invoices', jsonParser, urlEncodedParser, salesInvoicesRoutes);
+  server.use('/api/sales-inquiries', jsonParser, urlEncodedParser, salesInquiriesRoutes);
+  server.use('/api/sales-quotations', jsonParser, urlEncodedParser, salesQuotationsRoutes);
+  server.use('/api/delivery-challans', jsonParser, urlEncodedParser, deliveryChallansRoutes);
+  server.use('/api/sales-returns', jsonParser, urlEncodedParser, salesReturnsRoutes);
+  server.use('/api/accounts', jsonParser, urlEncodedParser, accountsRoutes);
+  server.use('/api/vehicles', jsonParser, urlEncodedParser, vehiclesRoutes);
+  server.use('/api/vehicle-models', jsonParser, urlEncodedParser, vehicleModelsRoutes);
+  server.use('/api/racks', jsonParser, urlEncodedParser, racksRoutes);
+  server.use('/api/shelves', jsonParser, urlEncodedParser, shelvesRoutes);
+  server.use('/api/store-types', jsonParser, urlEncodedParser, storeTypesRoutes);
+  server.use('/api/stores', jsonParser, urlEncodedParser, storesRoutes);
   console.log('✓ All API routes registered');
 
   // Health check
@@ -160,18 +171,25 @@ app.prepare().then(async () => {
     return handle(req, res);
   });
 
-  server.listen(port, (err?: Error) => {
-    if (err) {
-      if ((err as any).code === 'EADDRINUSE') {
-        console.error(`\n✗ Port ${port} is already in use.`);
-        console.error('Please stop the existing server or use a different port.');
-        console.error('\nTo stop all Node processes:');
-        console.error('  Stop-Process -Name node -Force');
-        console.error('\nOr change the PORT in your .env file.\n');
-        process.exit(1);
-      }
-      throw err;
+  // IMPORTANT: Express 'listen' does NOT pass errors to the callback.
+  // We must listen for the server 'error' event to avoid uncaught exceptions like EADDRINUSE.
+  const httpServer: Server = server.listen(port, hostname);
+
+  httpServer.on('error', (err: any) => {
+    if (err?.code === 'EADDRINUSE') {
+      console.error(`\n✗ Port ${port} is already in use.`);
+      console.error('Please stop the existing server or use a different port.');
+      console.error('\nTo stop the process on port 3000 (PowerShell):');
+      console.error('  netstat -ano | findstr :3000');
+      console.error('  Stop-Process -Id <PID> -Force');
+      console.error('\nOr change PORT in .env/.env.local (e.g. PORT=3001).\n');
+      process.exit(1);
     }
+    console.error('\n✗ Server error:', err);
+    process.exit(1);
+  });
+
+  httpServer.on('listening', () => {
     const localIP = getLocalIP();
     console.log(`\n🚀 Server is running on:`);
     console.log(`   Local:    http://localhost:${port}`);
