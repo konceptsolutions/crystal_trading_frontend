@@ -8,6 +8,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select } from '@/components/ui/select';
 import { DatePicker } from '@/components/ui/date-picker';
+import AnimatedSelect from '@/components/ui/animated-select';
 import { useToast } from '@/components/ui/toast-provider';
 import api from '@/lib/api';
 import { Part } from '@/components/inventory/PartForm';
@@ -721,6 +722,20 @@ export default function PurchaseOrdersPage() {
   // Filter is now handled in the API call, but keep this for client-side filtering if needed
   const filteredPOs = purchaseOrders;
 
+  // Prevent page-level horizontal scrolling while Receive screen is open
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    if (!receivingPO) return;
+    const prevBody = document.body.style.overflowX;
+    const prevHtml = document.documentElement.style.overflowX;
+    document.body.style.overflowX = 'hidden';
+    document.documentElement.style.overflowX = 'hidden';
+    return () => {
+      document.body.style.overflowX = prevBody;
+      document.documentElement.style.overflowX = prevHtml;
+    };
+  }, [receivingPO]);
+
   return (
     <div className="p-6 space-y-6 animate-fade-in">
       <style jsx>{`
@@ -743,38 +758,41 @@ export default function PurchaseOrdersPage() {
         }
       `}</style>
 
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-start gap-4">
         <div>
           <h1 className="text-3xl font-bold text-gray-900 mb-2">Purchase Orders</h1>
           <p className="text-sm text-gray-500">Manage purchase orders</p>
         </div>
-        {receivingPO ? (
-          <Button
-            type="button"
-            variant="outline"
-            onClick={() => {
-              setReceivingPO(null);
-              setReceiveRemarks('');
-              setError('');
-              setSuccess('');
-            }}
-            className="border-gray-300"
-          >
-            ← Back to List
-          </Button>
-        ) : (
-          <Button
-            onClick={() => {
-              resetForm().then(() => {
-                setShowForm(true);
-              });
-              window.scrollTo({ top: 0, behavior: 'smooth' });
-            }}
-            className="bg-primary-500 hover:bg-primary-600 shadow-lg hover:shadow-xl transition-all duration-300"
-          >
-            + New Purchase Order
-          </Button>
-        )}
+        {/* Start from the left (same line/margin as table), not anchored to the right */}
+        <div className="w-full flex justify-start">
+          {receivingPO ? (
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => {
+                setReceivingPO(null);
+                setReceiveRemarks('');
+                setError('');
+                setSuccess('');
+              }}
+              className="border-gray-300"
+            >
+              ← Back to List
+            </Button>
+          ) : (
+            <Button
+              onClick={() => {
+                resetForm().then(() => {
+                  setShowForm(true);
+                });
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+              }}
+              className="bg-primary-500 hover:bg-primary-600 shadow-lg hover:shadow-xl transition-all duration-300"
+            >
+              + New Purchase Order
+            </Button>
+          )}
+        </div>
       </div>
 
 
@@ -800,10 +818,11 @@ export default function PurchaseOrdersPage() {
               <Button variant="ghost" onClick={() => setReceivingPO(null)}>✕</Button>
             </div>
           </CardHeader>
-          <CardContent className="p-6">
-            <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_minmax(420px,1fr)] 2xl:grid-cols-[minmax(0,1fr)_minmax(520px,1fr)] gap-6 items-start">
+          <CardContent className="p-6 overflow-x-hidden">
+            {/* Responsive: stack on laptop/tablet/mobile; split only on ultra-wide screens to avoid right-side cut-off */}
+            <div className="grid grid-cols-1 min-[1800px]:grid-cols-[minmax(0,1fr)_460px] gap-4 min-[1800px]:gap-6 items-start min-w-0">
               {/* LEFT */}
-              <div className="space-y-6">
+              <div className="space-y-6 min-w-0">
                 {/* PO Details Section (single line on desktop) */}
                 <div className="bg-gray-50 p-4 rounded-lg border">
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 2xl:grid-cols-7 gap-4 items-end">
@@ -1250,7 +1269,7 @@ export default function PurchaseOrdersPage() {
               </div>
 
               {/* RIGHT: Current Stock + History */}
-              <div className="self-stretch">
+              <div className="self-stretch min-w-0">
                 {(() => {
                   const totals = calculateReceiveTotals();
                   const it = selectedReceiveItem;
@@ -1262,7 +1281,7 @@ export default function PurchaseOrdersPage() {
                   const estMarginPct = unitPurchasePKR > 0 ? (estMargin / unitPurchasePKR) * 100 : 0;
                   const estLineCost = recvQty * unitPurchasePKR;
                   return (
-                    <div className="rounded-2xl bg-white shadow-md border border-gray-200 overflow-hidden xl:sticky xl:top-6 h-[calc(100vh-140px)] flex flex-col">
+                    <div className="rounded-2xl bg-white shadow-md border border-gray-200 overflow-hidden min-[1800px]:sticky min-[1800px]:top-6 min-[1800px]:h-[calc(100vh-140px)] flex flex-col min-w-0">
                       <div className="px-5 py-4 border-b bg-gradient-to-r from-gray-50 to-white flex items-center justify-between">
                         <div>
                           <div className="text-sm font-semibold text-gray-900">Stock & History</div>
@@ -1679,28 +1698,31 @@ export default function PurchaseOrdersPage() {
       {!receivingPO && (
       <Card className="shadow-lg">
         <CardHeader className="bg-gradient-to-r from-gray-50 to-gray-100 border-b">
-          <div className="flex items-center justify-between flex-wrap gap-4">
+          <div className="flex flex-wrap items-center gap-4">
             <CardTitle>All Purchase Orders ({filteredPOs.length})</CardTitle>
-            <div className="flex gap-2">
+            {/* Start filters from the left (same line/margin as table) */}
+            <div className="w-full flex flex-wrap items-center justify-start gap-2">
               <Input
                 type="text"
                 placeholder="Search..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-64"
+                className="w-full sm:w-64"
               />
-              <Select
+              <AnimatedSelect
                 value={statusFilter}
-                onChange={(e) => setStatusFilter(e.target.value)}
-                className="min-w-[150px]"
-              >
-                <option value="">All Status</option>
-                <option value="draft">Draft</option>
-                <option value="pending">Pending</option>
-                <option value="approved">Approved</option>
-                <option value="received">Received</option>
-                <option value="cancelled">Cancelled</option>
-              </Select>
+                onChange={(v) => setStatusFilter(v)}
+                placeholder="All Status"
+                className="w-full sm:w-[180px]"
+                options={[
+                  { value: '', label: 'All Status' },
+                  { value: 'draft', label: 'Draft' },
+                  { value: 'pending', label: 'Pending' },
+                  { value: 'approved', label: 'Approved' },
+                  { value: 'received', label: 'Received' },
+                  { value: 'cancelled', label: 'Cancelled' },
+                ]}
+              />
             </div>
           </div>
         </CardHeader>
@@ -1712,46 +1734,75 @@ export default function PurchaseOrdersPage() {
               {searchTerm || statusFilter ? 'No purchase orders found matching your filters.' : 'No purchase orders found. Create one to get started.'}
             </div>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
+            <div className="overflow-x-hidden">
+              <table className="w-full table-fixed text-xs sm:text-sm">
+                <colgroup>
+                  <col className="w-8" /> {/* checkbox */}
+                  <col className="w-12" /> {/* S.NO */}
+                  <col className="w-28" /> {/* PO.No */}
+                  <col className="w-32" /> {/* Suppliers */}
+                  <col className="hidden lg:table-cell w-[280px]" /> {/* Store */}
+                  <col className="w-28" /> {/* Request Date */}
+                  <col className="w-28" /> {/* Receive Date */}
+                  <col className="w-24" /> {/* Grand Total */}
+                  <col className="hidden lg:table-cell w-40" /> {/* Remarks */}
+                  <col className="w-[340px]" /> {/* Actions */}
+                </colgroup>
                 <thead>
                   <tr className="border-b bg-gray-50 text-gray-700">
-                    <th className="py-3 px-3 w-10">
+                    <th className="py-2 px-2 sm:py-3 sm:px-3 w-8">
                       <input type="checkbox" aria-label="Select all" />
                     </th>
-                    <th className="py-3 px-3">S.NO</th>
-                    <th className="py-3 px-3">PO.No</th>
-                    <th className="py-3 px-3">Suppliers</th>
-                    <th className="py-3 px-3">Store</th>
-                    <th className="py-3 px-3">Request Date</th>
-                    <th className="py-3 px-3">Receive Date</th>
-                    <th className="py-3 px-3">Grand Total</th>
-                    <th className="py-3 px-3">Remarks</th>
-                    <th className="py-3 px-3 text-center">Actions</th>
+                    <th className="py-2 px-2 sm:py-3 sm:px-3 text-center whitespace-nowrap">S.NO</th>
+                    <th className="py-2 px-2 sm:py-3 sm:px-3 text-center whitespace-nowrap">PO.No</th>
+                    <th className="py-2 px-2 sm:py-3 sm:px-3 text-center whitespace-nowrap">Suppliers</th>
+                    <th className="hidden lg:table-cell py-2 px-2 sm:py-3 sm:px-3 text-center whitespace-nowrap">Store</th>
+                    <th className="py-2 px-2 sm:py-3 sm:px-3 text-center whitespace-nowrap">Request Date</th>
+                    <th className="py-2 px-2 sm:py-3 sm:px-3 text-center whitespace-nowrap">Receive Date</th>
+                    <th className="py-2 px-2 sm:py-3 sm:px-3 text-center whitespace-nowrap">Grand Total</th>
+                    <th className="hidden lg:table-cell py-2 px-2 sm:py-3 sm:px-3 text-center whitespace-nowrap">Remarks</th>
+                    <th className="py-2 px-2 sm:py-3 sm:px-3 text-center whitespace-nowrap">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
                   {filteredPOs.map((po, idx) => (
                     <tr key={po.id || idx} className="border-b hover:bg-gray-50">
-                      <td className="py-3 px-3">
+                      <td className="py-2 px-2 sm:py-3 sm:px-3">
                         <input type="checkbox" aria-label={`Select ${po.poNo}`} />
                       </td>
-                      <td className="py-3 px-3">{idx + 1}</td>
-                      <td className="py-3 px-3 font-medium">{po.poNo}</td>
-                      <td className="py-3 px-3">{po.supplierName}</td>
-                      <td className="py-3 px-3">{(po as any).store || po.supplierAddress || '-'}</td>
-                      <td className="py-3 px-3">{formatDate(po.orderDate)}</td>
-                      <td className="py-3 px-3">{formatDate((po as any).receivedAt)}</td>
-                      <td className="py-3 px-3 font-semibold">{Number(po.totalAmount || 0).toLocaleString()}</td>
-                      <td className="py-3 px-3">{po.notes || '-'}</td>
-                      <td className="py-3 px-3">
-                        <div className="flex items-center justify-center gap-2">
+                      <td className="py-2 px-2 sm:py-3 sm:px-3 text-center whitespace-nowrap">{idx + 1}</td>
+                      <td className="py-2 px-2 sm:py-3 sm:px-3 text-center font-medium whitespace-nowrap">{po.poNo}</td>
+                      <td
+                        className="py-2 px-2 sm:py-3 sm:px-3 text-center truncate max-w-[120px] sm:max-w-[160px]"
+                        title={po.supplierName || ''}
+                      >
+                        {po.supplierName}
+                      </td>
+                      <td
+                        className="hidden lg:table-cell py-2 px-2 sm:py-3 sm:px-3 text-center truncate max-w-[220px]"
+                        title={String((po as any).store || po.supplierAddress || '-')}
+                      >
+                        {(po as any).store || po.supplierAddress || '-'}
+                      </td>
+                      <td className="py-2 px-2 sm:py-3 sm:px-3 text-center whitespace-nowrap">{formatDate(po.orderDate)}</td>
+                      <td className="py-2 px-2 sm:py-3 sm:px-3 text-center whitespace-nowrap">{formatDate((po as any).receivedAt)}</td>
+                      <td className="py-2 px-2 sm:py-3 sm:px-3 text-center font-semibold whitespace-nowrap">
+                        {Number(po.totalAmount || 0).toLocaleString()}
+                      </td>
+                      <td
+                        className="hidden lg:table-cell py-2 px-2 sm:py-3 sm:px-3 text-center truncate max-w-[140px]"
+                        title={po.notes || ''}
+                      >
+                        {po.notes || '-'}
+                      </td>
+                      <td className="py-2 px-2 sm:py-3 sm:px-3 text-left align-top whitespace-nowrap">
+                        <div className="flex flex-wrap sm:flex-nowrap items-center justify-start gap-2">
                           <Button
                             variant="outline"
-                            size="sm"
+                            size="xs"
                             onClick={() => setViewingPO(po)}
                             title="View"
-                            className="px-3"
+                            className="w-9 px-0"
                           >
                             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
@@ -1760,34 +1811,34 @@ export default function PurchaseOrdersPage() {
                           </Button>
                           <Button
                             variant="outline"
-                            size="sm"
+                            size="xs"
                             onClick={() => handleEdit(po)}
-                            className="hover:bg-primary-50 hover:border-primary-300 transition-colors"
+                            className="px-3 hover:bg-primary-50 hover:border-primary-300 transition-colors"
                           >
                             Edit
                           </Button>
                           <Button
                             variant="outline"
-                            size="sm"
+                            size="xs"
                             onClick={() => po.id && handleDelete(po.id)}
-                            className="text-red-600 hover:text-red-700 hover:bg-red-50 transition-colors"
+                            className="px-3 text-red-600 hover:text-red-700 hover:bg-red-50 transition-colors"
                           >
                             Delete
                           </Button>
                           <Button
                             type="button"
-                            size="sm"
+                            size="xs"
                             onClick={() => handleReceive(po)}
                             disabled={po.status === 'received'}
                             className={
                               po.status === 'received'
-                                ? 'bg-green-600 hover:bg-green-600 text-white px-4'
-                                : 'bg-yellow-500 hover:bg-yellow-600 text-black px-4'
+                                ? 'bg-green-600 hover:bg-green-600 text-white px-3'
+                                : 'bg-yellow-500 hover:bg-yellow-600 text-black px-3'
                             }
                           >
                             {po.status === 'received' ? 'Received' : 'Receive'}
                           </Button>
-                          <Button variant="outline" size="sm" title="More" className="px-2">
+                          <Button variant="outline" size="xs" title="More" className="w-9 px-0">
                             ⋮
                           </Button>
                         </div>
