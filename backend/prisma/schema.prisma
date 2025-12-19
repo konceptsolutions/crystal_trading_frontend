@@ -359,16 +359,19 @@ model Supplier {
 }
 
 model Customer {
-  id            String         @id @default(cuid())
-  name          String
-  email         String?
-  phone         String?
-  address       String?
-  cnic          String?
-  status        String         @default("A")
-  createdAt     DateTime       @default(now())
-  updatedAt     DateTime       @updatedAt
-  salesInvoices SalesInvoice[]
+  id             String         @id @default(cuid())
+  name           String
+  email          String?
+  phone          String?
+  address        String?
+  cnic           String?
+  status         String         @default("A")
+  openingBalance Float          @default(0)
+  creditBalance  Float          @default(0)
+  creditLimit    Float          @default(0)
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+  salesInvoices  SalesInvoice[]
 
   @@index([name])
   @@index([status])

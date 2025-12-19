@@ -195,7 +195,9 @@ export default function SalesInvoice() {
       if (partSearchTerm.length > 0) {
         try {
           const response = await api.get('/parts', { params: { search: partSearchTerm } });
-          setParts(response.data.parts || []);
+          // Filter out inactive parts (only show active parts)
+          const activeParts = (response.data.parts || []).filter((part: any) => part.status === 'A');
+          setParts(activeParts);
         } catch (error) {
           console.error('Failed to fetch parts:', error);
         }

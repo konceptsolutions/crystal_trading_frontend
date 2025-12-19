@@ -44,9 +44,11 @@ export default function PartsTable({ onSelectPart, selectedPartId, refreshTrigge
       }
       const response = await api.get(`/parts?${params.toString()}`);
       console.log('Parts API Response:', response.data);
-      setParts(response.data.parts || []);
+      // Filter out inactive parts (only show active parts)
+      const activeParts = (response.data.parts || []).filter((part: any) => part.status === 'A');
+      setParts(activeParts);
       setTotalPages(response.data.pagination?.totalPages || 1);
-      setTotal(response.data.pagination?.total || 0);
+      setTotal(activeParts.length);
     } catch (error: any) {
       console.error('Failed to load parts - Full error:', {
         message: error.message,

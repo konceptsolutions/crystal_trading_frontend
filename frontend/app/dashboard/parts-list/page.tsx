@@ -21,6 +21,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import { useToast } from '@/components/ui/toast-provider';
 
 interface PartWithStock extends Part {
   stock?: {
@@ -72,6 +73,17 @@ export default function PartsListPage() {
   
   // Selection state
   const [selectedParts, setSelectedParts] = useState<Set<string>>(new Set());
+  
+  // Image popup state
+  const [selectedImage, setSelectedImage] = useState<string | null>(null);
+  const [imagePopupOpen, setImagePopupOpen] = useState(false);
+  
+  // Status dropdown state
+  const [statusDropdownOpen, setStatusDropdownOpen] = useState<string | null>(null);
+  const [updatingStatusId, setUpdatingStatusId] = useState<string | null>(null);
+  
+  // Toast notifications
+  const { showToast } = useToast();
 
   // Debounce search input
   useEffect(() => {
@@ -80,6 +92,21 @@ export default function PartsListPage() {
     }, 300);
     return () => clearTimeout(timer);
   }, [search]);
+
+  // Close status dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as HTMLElement;
+      if (!target.closest('.status-dropdown-container')) {
+        setStatusDropdownOpen(null);
+      }
+    };
+
+    if (statusDropdownOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => document.removeEventListener('mousedown', handleClickOutside);
+    }
+  }, [statusDropdownOpen]);
 
   useEffect(() => {
     if (activeTab === 'parts') {
@@ -592,6 +619,34 @@ export default function PartsListPage() {
     }
   };
 
+  // Update part status
+  const handleUpdateStatus = async (partId: string, newStatus: 'A' | 'I') => {
+    if (!partId) return;
+    
+    setUpdatingStatusId(partId);
+    setStatusDropdownOpen(null);
+    
+    try {
+      await api.put(`/parts/${partId}`, { status: newStatus });
+      
+      // Update local state
+      setParts(prevParts => 
+        prevParts.map(part => 
+          part.id === partId ? { ...part, status: newStatus } : part
+        )
+      );
+      
+      // Show success notification
+      const statusText = newStatus === 'A' ? 'Active' : 'Inactive';
+      showToast(`Part status updated to ${statusText}`, 'success');
+    } catch (error: any) {
+      console.error('Failed to update status:', error);
+      showToast('Failed to update part status', 'error');
+    } finally {
+      setUpdatingStatusId(null);
+    }
+  };
+
   return (
     <div className="bg-gray-50 p-3 sm:p-4 md:p-6 min-h-screen w-full">
       <div className="max-w-full mx-auto w-full">
@@ -1053,13 +1108,56 @@ export default function PartsListPage() {
                           {part.application || '-'}
                         </TableCell>
                         <TableCell className="text-center py-2 px-2">
-                          <span className={`px-2 py-1 rounded-full text-xs font-semibold ${
-                            part.status === 'A'
-                              ? 'bg-primary-100 text-primary-800'
-                              : 'bg-gray-100 text-gray-800'
-                          }`}>
-                            {part.status === 'A' ? 'Active' : 'Inactive'}
-                          </span>
+                          <div className="relative inline-block status-dropdown-container">
+                            <button
+                              onClick={() => setStatusDropdownOpen(statusDropdownOpen === part.id ? null : part.id || null)}
+                              disabled={updatingStatusId === part.id}
+                              className={`px-2 py-1 rounded-full text-xs font-semibold transition-all duration-200 flex items-center gap-1 ${
+                                part.status === 'A'
+                                  ? 'bg-primary-100 text-primary-800 hover:bg-primary-200'
+                                  : 'bg-gray-100 text-gray-800 hover:bg-gray-200'
+                              } ${updatingStatusId === part.id ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+                            >
+                              {updatingStatusId === part.id ? (
+                                <>
+                                  <svg className="animate-spin h-3 w-3" fill="none" viewBox="0 0 24 24">
+                                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                  </svg>
+                                  Updating...
+                                </>
+                              ) : (
+                                <>
+                                  {part.status === 'A' ? 'Active' : 'Inactive'}
+                                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                                  </svg>
+                                </>
+                              )}
+                            </button>
+                            
+                            {statusDropdownOpen === part.id && (
+                              <div className="absolute top-full left-1/2 transform -translate-x-1/2 mt-1 z-50 bg-white border border-gray-200 rounded-lg shadow-lg min-w-[120px] overflow-hidden animate-in fade-in-0 zoom-in-95 duration-200">
+                                {part.status === 'A' ? (
+                                  <button
+                                    onClick={() => handleUpdateStatus(part.id || '', 'I')}
+                                    className="w-full px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 transition-colors text-left flex items-center gap-2"
+                                  >
+                                    <span className="w-2 h-2 rounded-full bg-gray-400"></span>
+                                    Inactive
+                                  </button>
+                                ) : (
+                                  <button
+                                    onClick={() => handleUpdateStatus(part.id || '', 'A')}
+                                    className="w-full px-3 py-2 text-sm text-primary-700 hover:bg-primary-50 transition-colors text-left flex items-center gap-2"
+                                  >
+                                    <span className="w-2 h-2 rounded-full bg-primary-500"></span>
+                                    Active
+                                  </button>
+                                )}
+                              </div>
+                            )}
+                          </div>
                         </TableCell>
                         <TableCell className="text-center py-2 px-2 hidden md:table-cell">
                           <div className="flex items-center justify-center gap-1">
@@ -1069,7 +1167,10 @@ export default function PartsListPage() {
                                   src={part.imageUrl1} 
                                   alt="Part image 1" 
                                   className="w-10 h-10 object-cover rounded border border-gray-200 cursor-pointer hover:scale-110 transition-transform"
-                                  onClick={() => window.open(part.imageUrl1, '_blank')}
+                                  onClick={() => {
+                                    setSelectedImage(part.imageUrl1 || null);
+                                    setImagePopupOpen(true);
+                                  }}
                                   onError={(e) => {
                                     (e.target as HTMLImageElement).style.display = 'none';
                                   }}
@@ -1082,7 +1183,10 @@ export default function PartsListPage() {
                                   src={part.imageUrl2} 
                                   alt="Part image 2" 
                                   className="w-10 h-10 object-cover rounded border border-gray-200 cursor-pointer hover:scale-110 transition-transform"
-                                  onClick={() => window.open(part.imageUrl2, '_blank')}
+                                  onClick={() => {
+                                    setSelectedImage(part.imageUrl2 || null);
+                                    setImagePopupOpen(true);
+                                  }}
                                   onError={(e) => {
                                     (e.target as HTMLImageElement).style.display = 'none';
                                   }}
@@ -1402,6 +1506,39 @@ export default function PartsListPage() {
             </DialogFooter>
           </DialogContent>
         </Dialog>
+
+      {/* Image Popup Dialog */}
+      <Dialog open={imagePopupOpen} onOpenChange={setImagePopupOpen}>
+        <DialogContent className="sm:max-w-4xl w-[95%] max-w-4xl mx-auto p-0 bg-transparent border-0 shadow-none">
+          <div className="relative w-full h-full flex items-center justify-center">
+            {selectedImage && (
+              <div className="relative w-full max-h-[90vh] flex items-center justify-center bg-white rounded-lg overflow-hidden shadow-2xl animate-in fade-in-0 zoom-in-95 duration-300">
+                <img
+                  src={selectedImage}
+                  alt="Part image"
+                  className="max-w-full max-h-[90vh] w-auto h-auto object-contain"
+                  onError={(e) => {
+                    (e.target as HTMLImageElement).style.display = 'none';
+                    const errorDiv = document.createElement('div');
+                    errorDiv.className = 'p-8 text-center text-gray-500';
+                    errorDiv.textContent = 'Failed to load image';
+                    (e.target as HTMLImageElement).parentElement?.appendChild(errorDiv);
+                  }}
+                />
+                <button
+                  className="absolute right-4 top-4 rounded-full bg-white/90 hover:bg-primary-500 text-gray-700 hover:text-white transition-all duration-200 w-10 h-10 flex items-center justify-center shadow-lg hover:shadow-xl z-10"
+                  onClick={() => setImagePopupOpen(false)}
+                  aria-label="Close image"
+                >
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
 
     </div>
   );

@@ -399,39 +399,109 @@ router.put('/:id', async (req: AuthRequest, res) => {
         ? undefined
         : (typeof data.receiveData === 'string' ? data.receiveData : JSON.stringify(data.receiveData));
 
-    const purchaseOrder = await prisma.purchaseOrder.update({
-      where: { id: req.params.id },
-      data: {
-        ...data,
-        receiveData: receiveDataValue,
-        supplierId: data.type === 'purchase' ? (data.supplierId || null) : null,
-        subTotal: data.items ? subTotal : undefined,
-        totalAmount: data.items || data.discount !== undefined || data.tax !== undefined ? totalAmount : undefined,
-        orderDate,
-        expectedDate,
-        approvedBy,
-        approvedAt,
-        receivedAt,
-        items: data.items ? {
-          create: data.items.map(item => ({
-            partId: item.partId || null,
-            partNo: item.partNo,
-            description: item.description || null,
-            quantity: item.quantity,
-            unitPrice: item.unitPrice,
-            totalPrice: item.totalPrice,
-            uom: item.uom || null,
-          })),
-        } : undefined,
-      },
-      include: {
-        supplier: true,
-        items: {
-          include: {
-            part: true,
+    // Update purchase order and handle stock updates in a transaction
+    const purchaseOrder = await prisma.$transaction(async (tx) => {
+      const updatedPO = await tx.purchaseOrder.update({
+        where: { id: req.params.id },
+        data: {
+          ...data,
+          receiveData: receiveDataValue,
+          supplierId: data.type === 'purchase' ? (data.supplierId || null) : null,
+          subTotal: data.items ? subTotal : undefined,
+          totalAmount: data.items || data.discount !== undefined || data.tax !== undefined ? totalAmount : undefined,
+          orderDate,
+          expectedDate,
+          approvedBy,
+          approvedAt,
+          receivedAt,
+          items: data.items ? {
+            create: data.items.map(item => ({
+              partId: item.partId || null,
+              partNo: item.partNo,
+              description: item.description || null,
+              quantity: item.quantity,
+              unitPrice: item.unitPrice,
+              totalPrice: item.totalPrice,
+              uom: item.uom || null,
+            })),
+          } : undefined,
+        },
+        include: {
+          supplier: true,
+          items: {
+            include: {
+              part: true,
+            },
           },
         },
-      },
+      });
+
+      // If status is being changed to 'received', update stock for items with receivedQty
+      if (data.status === 'received' && existing.status !== 'received' && receiveDataValue) {
+        try {
+          const receiveData = typeof receiveDataValue === 'string' 
+            ? JSON.parse(receiveDataValue) 
+            : receiveDataValue;
+
+          if (receiveData.items && Array.isArray(receiveData.items)) {
+            for (const item of receiveData.items) {
+              const receivedQty = item.receivedQty || item.quantity || 0;
+              
+              // Only update stock if receivedQty > 0
+              if (receivedQty > 0) {
+                let part = null;
+                
+                // Try to find part by partId first (more reliable)
+                if (item.partId) {
+                  part = await tx.part.findUnique({
+                    where: { id: item.partId },
+                  });
+                }
+                
+                // Fallback to partNo if partId not found
+                if (!part && item.partNo) {
+                  part = await tx.part.findUnique({
+                    where: { partNo: item.partNo },
+                  });
+                }
+
+                if (part) {
+                  // Get or create stock entry
+                  const existingStock = await tx.stock.findUnique({
+                    where: { partId: part.id },
+                  });
+
+                  const stockUpdateData: any = {
+                    quantity: (existingStock?.quantity || 0) + receivedQty,
+                    store: receiveData.storeName || receiveData.storeId || null,
+                    racks: item.rackNo || null,
+                    shelf: item.shelfNo || null,
+                  };
+
+                  if (existingStock) {
+                    await tx.stock.update({
+                      where: { partId: part.id },
+                      data: stockUpdateData,
+                    });
+                  } else {
+                    await tx.stock.create({
+                      data: {
+                        partId: part.id,
+                        ...stockUpdateData,
+                      },
+                    });
+                  }
+                }
+              }
+            }
+          }
+        } catch (error) {
+          console.error('Error updating stock from receiveData:', error);
+          // Don't fail the transaction, just log the error
+        }
+      }
+
+      return updatedPO;
     });
 
     res.json({ purchaseOrder });
@@ -447,26 +517,130 @@ router.put('/:id', async (req: AuthRequest, res) => {
 // Delete purchase order
 router.delete('/:id', async (req: AuthRequest, res) => {
   try {
+    // Check if user is admin
+    if (req.user?.role !== 'admin') {
+      return res.status(403).json({
+        error: 'Forbidden: Only administrators can delete purchase orders.',
+      });
+    }
+
     const purchaseOrder = await prisma.purchaseOrder.findUnique({
       where: { id: req.params.id },
+      include: {
+        items: {
+          include: {
+            part: true,
+          },
+        },
+      },
     });
 
     if (!purchaseOrder) {
       return res.status(404).json({ error: 'Purchase order not found' });
     }
 
-    // Only allow deletion of draft or cancelled orders
-    if (!['draft', 'cancelled'].includes(purchaseOrder.status)) {
-      return res.status(400).json({
-        error: 'Cannot delete purchase order. Only draft or cancelled orders can be deleted.',
-      });
+    const wasReceived = purchaseOrder.status === 'received';
+    let stockReversed = false;
+
+    // Get IP address from request
+    const ipAddress = 
+      (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() ||
+      (req.headers['x-real-ip'] as string) ||
+      req.socket.remoteAddress ||
+      'unknown';
+
+    // If PO was received, reverse stock before deletion
+    if (wasReceived && purchaseOrder.receiveData) {
+      try {
+        const receiveData = typeof purchaseOrder.receiveData === 'string'
+          ? JSON.parse(purchaseOrder.receiveData)
+          : purchaseOrder.receiveData;
+
+        if (receiveData.items && Array.isArray(receiveData.items)) {
+          await prisma.$transaction(async (tx) => {
+            for (const item of receiveData.items) {
+              const receivedQty = item.receivedQty || item.quantity || 0;
+              
+              // Only reverse stock if receivedQty > 0
+              if (receivedQty > 0) {
+                let part = null;
+                
+                // Try to find part by partId first (more reliable)
+                if (item.partId) {
+                  part = await tx.part.findUnique({
+                    where: { id: item.partId },
+                  });
+                }
+                
+                // Fallback to partNo if partId not found
+                if (!part && item.partNo) {
+                  part = await tx.part.findUnique({
+                    where: { partNo: item.partNo },
+                  });
+                }
+
+                if (part) {
+                  const existingStock = await tx.stock.findUnique({
+                    where: { partId: part.id },
+                  });
+
+                  if (existingStock) {
+                    const newQuantity = Math.max(0, existingStock.quantity - receivedQty);
+                    await tx.stock.update({
+                      where: { partId: part.id },
+                      data: {
+                        quantity: newQuantity,
+                      },
+                    });
+                  }
+                }
+              }
+            }
+          });
+          stockReversed = true;
+        }
+      } catch (stockError) {
+        console.error('Error reversing stock during PO deletion:', stockError);
+        // Continue with deletion even if stock reversal fails, but log it
+      }
     }
 
+    // Create deletion log before deleting the PO
+    try {
+      await prisma.purchaseOrderDeletionLog.create({
+        data: {
+          purchaseOrderId: purchaseOrder.id,
+          poNo: purchaseOrder.poNo,
+          type: purchaseOrder.type,
+          deletedBy: req.user?.id || 'unknown',
+          deletedByName: req.user?.name || 'Unknown',
+          deletedByEmail: req.user?.email || 'unknown@unknown.com',
+          deletedByRole: req.user?.role || 'unknown',
+          ipAddress: ipAddress,
+          status: purchaseOrder.status,
+          wasReceived: wasReceived,
+          stockReversed: stockReversed,
+          notes: wasReceived 
+            ? (stockReversed 
+                ? 'Stock reversed successfully' 
+                : 'Stock reversal failed or not needed')
+            : 'PO was not received, no stock to reverse',
+        },
+      });
+    } catch (logError) {
+      console.error('Error creating deletion log:', logError);
+      // Continue with deletion even if logging fails
+    }
+
+    // Delete the purchase order
     await prisma.purchaseOrder.delete({
       where: { id: req.params.id },
     });
 
-    res.json({ message: 'Purchase order deleted successfully' });
+    res.json({ 
+      message: 'Purchase order deleted successfully',
+      stockReversed: stockReversed,
+    });
   } catch (error) {
     console.error('Delete purchase order error:', error);
     res.status(500).json({ error: 'Internal server error' });

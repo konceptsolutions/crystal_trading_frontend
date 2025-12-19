@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from 'next'
 import './globals.css'
 import ConsoleErrorFilter from '@/components/console-error-filter'
+import { ToastProvider } from '@/components/ui/toast-provider'
 
 export const metadata: Metadata = {
   title: 'Inventory Management System',
@@ -23,7 +24,9 @@ export default function RootLayout({
     <html lang="en" suppressHydrationWarning>
       <body suppressHydrationWarning>
         <ConsoleErrorFilter />
-        {children}
+        <ToastProvider>
+          {children}
+        </ToastProvider>
       </body>
     </html>
   )

@@ -15,6 +15,9 @@ export interface Customer {
   address?: string;
   cnic?: string;
   status: 'A' | 'I';
+  openingBalance?: number;
+  creditBalance?: number;
+  creditLimit?: number;
   createdAt?: string;
   updatedAt?: string;
 }
@@ -45,6 +48,9 @@ export default function CustomersPage() {
     address: '',
     cnic: '',
     status: 'A',
+    openingBalance: 0,
+    creditBalance: 0,
+    creditLimit: 0,
   });
 
   useEffect(() => {
@@ -54,6 +60,7 @@ export default function CustomersPage() {
   const fetchCustomers = async () => {
     try {
       setLoading(true);
+      setError(''); // Clear previous errors
       const params = new URLSearchParams();
       if (statusFilter && statusFilter !== 'all') {
         params.append('status', statusFilter);
@@ -73,7 +80,11 @@ export default function CustomersPage() {
       const paginatedCustomers = allCustomers.slice(startIndex, endIndex);
       setCustomers(paginatedCustomers);
     } catch (err: any) {
-      setError(err.response?.data?.error || 'Failed to fetch customers');
+      console.error('Failed to fetch customers:', err);
+      const errorMessage = err.response?.data?.error || err.response?.data?.message || err.message || 'Failed to fetch customers';
+      setError(errorMessage);
+      setCustomers([]);
+      setTotalRecords(0);
     } finally {
       setLoading(false);
     }
@@ -116,6 +127,9 @@ export default function CustomersPage() {
       address: customer.address || '',
       cnic: customer.cnic || '',
       status: customer.status,
+      openingBalance: customer.openingBalance || 0,
+      creditBalance: customer.creditBalance || 0,
+      creditLimit: customer.creditLimit || 0,
     });
     setShowForm(true);
   };
@@ -150,6 +164,9 @@ export default function CustomersPage() {
       address: '',
       cnic: '',
       status: 'A',
+      openingBalance: 0,
+      creditBalance: 0,
+      creditLimit: 0,
     });
     setSelectedCustomer(null);
   };
@@ -282,6 +299,30 @@ export default function CustomersPage() {
                       <option value="I">Inactive</option>
                     </select>
                   </div>
+                  <div>
+                    <Label htmlFor="openingBalance">Opening Balance</Label>
+                    <Input
+                      id="openingBalance"
+                      type="number"
+                      step="0.01"
+                      value={formData.openingBalance || 0}
+                      onChange={(e) => setFormData({ ...formData, openingBalance: parseFloat(e.target.value) || 0 })}
+                      className="mt-1"
+                      placeholder="0.00"
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="creditLimit">Credit Limit</Label>
+                    <Input
+                      id="creditLimit"
+                      type="number"
+                      step="0.01"
+                      value={formData.creditLimit || 0}
+                      onChange={(e) => setFormData({ ...formData, creditLimit: parseFloat(e.target.value) || 0 })}
+                      className="mt-1"
+                      placeholder="0.00"
+                    />
+                  </div>
                 </div>
                 <div className="flex gap-2 pt-4">
                   <Button type="submit" disabled={loading} className="flex-1 bg-primary-500 hover:bg-primary-600">
@@ -307,9 +348,11 @@ export default function CustomersPage() {
       {/* Filters and Search */}
       <Card className="mb-6">
         <CardContent className="p-4">
-          <div className="flex flex-wrap items-center gap-4">
-            <div className="flex items-center gap-2">
-              <Label htmlFor="statusFilter" className="whitespace-nowrap">Active/Inactive</Label>
+          <div className="flex flex-wrap items-end gap-4">
+            <div className="flex flex-col gap-1.5 min-w-[140px]">
+              <Label htmlFor="statusFilter" className="text-sm font-medium text-gray-700 whitespace-nowrap">
+                Status
+              </Label>
               <select
                 id="statusFilter"
                 value={statusFilter}
@@ -317,35 +360,50 @@ export default function CustomersPage() {
                   setStatusFilter(e.target.value);
                   setCurrentPage(1);
                 }}
-                className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
+                className="h-10 px-3 py-2 border border-gray-300 rounded-md bg-white text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
               >
                 <option value="all">All</option>
                 <option value="Active">Active</option>
                 <option value="Inactive">Inactive</option>
               </select>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-col gap-1.5 min-w-[120px]">
+              <Label htmlFor="searchBy" className="text-sm font-medium text-gray-700 whitespace-nowrap">
+                Search By
+              </Label>
               <select
+                id="searchBy"
                 value={searchBy}
                 onChange={(e) => setSearchBy(e.target.value)}
-                className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
+                className="h-10 px-3 py-2 border border-gray-300 rounded-md bg-white text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
               >
                 <option value="name">Name</option>
                 <option value="phone">Phone</option>
                 <option value="email">Email</option>
                 <option value="cnic">CNIC</option>
               </select>
+            </div>
+            <div className="flex flex-col gap-1.5 flex-1 min-w-[200px]">
+              <Label htmlFor="searchInput" className="text-sm font-medium text-gray-700 whitespace-nowrap">
+                Search
+              </Label>
               <Input
+                id="searchInput"
                 type="text"
-                placeholder="Search..."
+                placeholder="Enter search term..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 onKeyPress={(e) => e.key === 'Enter' && handleSearch()}
-                className="w-48"
+                className="h-10"
               />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label className="text-sm font-medium text-gray-700 opacity-0 pointer-events-none">
+                Action
+              </Label>
               <Button
                 onClick={handleSearch}
-                className="bg-primary-500 hover:bg-primary-600 text-white"
+                className="h-10 px-6 bg-primary-500 hover:bg-primary-600 text-white font-medium"
               >
                 Search
               </Button>
@@ -370,6 +428,8 @@ export default function CustomersPage() {
                   <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Email</th>
                   <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">CNIC</th>
                   <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Contact No</th>
+                  <th className="px-4 py-3 text-right text-sm font-semibold text-gray-700">Opening Balance</th>
+                  <th className="px-4 py-3 text-right text-sm font-semibold text-gray-700">Credit Limit</th>
                   <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Status</th>
                   <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Actions</th>
                 </tr>
@@ -401,6 +461,12 @@ export default function CustomersPage() {
                       <td className="px-4 py-3 text-sm text-gray-600">{customer.email || '-'}</td>
                       <td className="px-4 py-3 text-sm text-gray-600">{customer.cnic || '-'}</td>
                       <td className="px-4 py-3 text-sm text-gray-600">{customer.phone || '-'}</td>
+                      <td className="px-4 py-3 text-sm text-gray-900 text-right font-medium">
+                        Rs {((customer.openingBalance || 0)).toLocaleString('en-PK', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </td>
+                      <td className="px-4 py-3 text-sm text-gray-900 text-right font-medium">
+                        Rs {((customer.creditLimit || 0)).toLocaleString('en-PK', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </td>
                       <td className="px-4 py-3">
                         <span className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-full text-xs font-medium ${
                           customer.status === 'A'

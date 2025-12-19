@@ -41,7 +41,7 @@ export interface Supplier {
 export interface PurchaseOrder {
   id?: string;
   poNo: string;
-  type: 'purchase';
+  type: 'purchase' | 'direct';
   supplierId?: string;
   supplier?: Supplier;
   supplierName: string;
@@ -480,6 +480,9 @@ export default function PurchaseOrdersPage() {
       notes: (po.notes ?? '').toString(),
       items: (po.items || []).map((it: any) => ({
         ...it,
+        quantity: Number(it?.quantity) || 0, // Ensure quantity is a number
+        unitPrice: Number(it?.unitPrice) || 0, // Ensure unitPrice is a number
+        totalPrice: Number(it?.totalPrice) || 0, // Ensure totalPrice is a number
         description: (it?.description ?? '').toString(),
         uom: (it?.uom ?? 'NOS').toString(),
       })),
@@ -489,21 +492,35 @@ export default function PurchaseOrdersPage() {
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm('Are you sure you want to delete this purchase order?')) {
+    const po = purchaseOrders.find(p => p.id === id);
+    const poType = (po?.type === 'direct') ? 'Direct Order' : 'Purchase Order';
+    const wasReceived = po?.status === 'received';
+    
+    const confirmMessage = wasReceived
+      ? `WARNING: This ${poType} was RECEIVED. Deleting it will REVERSE all stock quantities that were added when it was received.\n\nAre you sure you want to delete this ${poType}?`
+      : `Are you sure you want to delete this ${poType}?`;
+    
+    if (!confirm(confirmMessage)) {
       return;
     }
 
     try {
       setLoading(true);
-      await api.delete(`/purchase-orders/${id}`);
-      setSuccess('Purchase order deleted successfully');
+      const response = await api.delete(`/purchase-orders/${id}`);
+      const message = response.data?.stockReversed
+        ? `${poType} deleted successfully. Stock quantities have been reversed.`
+        : `${poType} deleted successfully.`;
+      setSuccess(message);
+      showToast(message, 'success');
       if (selectedPO?.id === id) {
         resetForm();
         setShowForm(false);
       }
       fetchPurchaseOrders();
     } catch (err: any) {
-      setError(err.response?.data?.error || 'Failed to delete purchase order');
+      const errorMsg = err.response?.data?.error || 'Failed to delete purchase order';
+      setError(errorMsg);
+      showToast(errorMsg, 'error');
     } finally {
       setLoading(false);
     }
@@ -593,25 +610,27 @@ export default function PurchaseOrdersPage() {
       
       return {
         ...item,
+        partId: item.partId || null,
         partNo: item.partNo || partDetails?.partNo || '',
         description: item.description || partDetails?.description || '',
         application: partDetails?.application || '',
         brand: partDetails?.brand || '',
+        quantity: Number(item.quantity) || 0, // Ensure quantity is a number
         stockQuantity:
           (partDetails as any)?.stock?.quantity ??
           (partDetails as any)?.stockQuantity ??
           (partDetails as any)?.quantity ??
           0,
-      receivedQty: item.quantity,
-      // Purchase Price (PKR) must start at 0 so admin can enter actual cost during receiving
-      purchasePricePKR: 0,
-      // Default sale price comes from Part Entry (selling price), not from purchase price
-      salePrice:
-        (partDetails?.priceA ?? partDetails?.priceB ?? partDetails?.priceM ?? partDetails?.cost ?? 0) * 1,
-      // Derived during receiving after admin enters purchasePricePKR
-      unitPrice: 0,
-      costPKR: 0,
-      amount: 0,
+        receivedQty: Number(item.quantity) || 0, // Initialize receivedQty with PO quantity
+        // Purchase Price (PKR) must start at 0 so admin can enter actual cost during receiving
+        purchasePricePKR: 0,
+        // Default sale price comes from Part Entry (selling price), not from purchase price
+        salePrice:
+          (partDetails?.priceA ?? partDetails?.priceB ?? partDetails?.priceM ?? partDetails?.cost ?? 0) * 1,
+        // Derived during receiving after admin enters purchasePricePKR
+        unitPrice: 0,
+        costPKR: 0,
+        amount: 0,
         racks: [],
         shelves: [],
       };
@@ -633,8 +652,11 @@ export default function PurchaseOrdersPage() {
     const updated = [...receiveItems];
     updated[index] = { ...updated[index], [field]: value };
     
-    // Recalculate unitPrice, costPKR, and amount
-    const receivedQty = updated[index].receivedQty || updated[index].quantity || 0;
+    // Get the updated receivedQty (use new value if field is receivedQty, otherwise use existing)
+    const receivedQty = field === 'receivedQty' 
+      ? (Number(value) || 0) 
+      : (updated[index].receivedQty || updated[index].quantity || 0);
+    
     let purchasePricePKR = Number(updated[index].purchasePricePKR || 0);
 
     // If admin edits Purchase Price (PKR), compute unitPrice (currency) from currencyRate
@@ -649,6 +671,11 @@ export default function PurchaseOrdersPage() {
       updated[index].unitPrice = unitPrice;
       purchasePricePKR = unitPrice * currencyRate;
       updated[index].purchasePricePKR = purchasePricePKR;
+    }
+
+    // If admin edits receivedQty, make sure it's stored
+    if (field === 'receivedQty') {
+      updated[index].receivedQty = receivedQty;
     }
 
     const costPKR = receivedQty * purchasePricePKR;
@@ -971,8 +998,9 @@ export default function PurchaseOrdersPage() {
                     </thead>
                     <tbody>
                       {receiveItems.map((item: any, idx: number) => {
-                        const receivedQty = item.receivedQty || item.quantity || 0;
-                        const costPKR = item.costPKR || 0;
+                        const receivedQty = Number(item.receivedQty ?? item.quantity ?? 0);
+                        const poQuantity = Number(item.quantity ?? 0);
+                        const costPKR = Number(item.costPKR || 0);
                         const costPerPart = receivedQty > 0 ? costPKR / receivedQty : 0;
                         
                         return (
@@ -1009,7 +1037,7 @@ export default function PurchaseOrdersPage() {
                                 />
                               </div>
                             </td>
-                            <td className="py-2 px-2 text-center font-medium">{item.quantity}</td>
+                            <td className="py-2 px-2 text-center font-medium">{poQuantity}</td>
                             <td className="py-2 px-2 text-center">
                               <div className="flex justify-center">
                                 <Input
@@ -1898,8 +1926,11 @@ export default function PurchaseOrdersPage() {
                           <Input
                             type="number"
                             min="1"
-                            value={item.quantity}
-                            onChange={(e) => updateItem(index, 'quantity', parseInt(e.target.value) || 1)}
+                            value={item.quantity || 0}
+                            onChange={(e) => {
+                              const qty = parseInt(e.target.value) || 0;
+                              updateItem(index, 'quantity', qty > 0 ? qty : 1);
+                            }}
                             required
                             className="w-full"
                             placeholder="1"

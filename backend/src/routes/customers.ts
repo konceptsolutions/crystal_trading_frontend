@@ -12,6 +12,9 @@ const customerSchema = z.object({
   address: z.string().optional(),
   cnic: z.string().optional(),
   status: z.enum(['A', 'I']).optional(),
+  openingBalance: z.number().optional().default(0),
+  creditBalance: z.number().optional().default(0),
+  creditLimit: z.number().optional().default(0),
 });
 
 // All routes require authentication
@@ -106,6 +109,9 @@ router.post('/', async (req: AuthRequest, res) => {
         address: data.address || null,
         cnic: data.cnic || null,
         status: data.status || 'A',
+        openingBalance: data.openingBalance || 0,
+        creditBalance: data.creditBalance || 0,
+        creditLimit: data.creditLimit || 0,
       },
     });
 
@@ -140,6 +146,9 @@ router.put('/:id', async (req: AuthRequest, res) => {
         phone: data.phone !== undefined ? (data.phone || null) : undefined,
         address: data.address !== undefined ? (data.address || null) : undefined,
         cnic: data.cnic !== undefined ? (data.cnic || null) : undefined,
+        openingBalance: data.openingBalance !== undefined ? data.openingBalance : undefined,
+        creditBalance: data.creditBalance !== undefined ? data.creditBalance : undefined,
+        creditLimit: data.creditLimit !== undefined ? data.creditLimit : undefined,
       },
     });
 
