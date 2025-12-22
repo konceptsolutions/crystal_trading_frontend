@@ -85,6 +85,16 @@ export default function PartsListPage() {
   // Toast notifications
   const { showToast } = useToast();
 
+  // XLSX Import state
+  const [xlsxImportOpen, setXlsxImportOpen] = useState(false);
+  const [xlsxFile, setXlsxFile] = useState<File | null>(null);
+  const [importing, setImporting] = useState(false);
+  const [importResults, setImportResults] = useState<{
+    success: number;
+    failed: number;
+    errors: Array<{ row: number; partNo?: string; error: string }>;
+  } | null>(null);
+
   // Debounce search input
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -647,6 +657,115 @@ export default function PartsListPage() {
     }
   };
 
+  // XLSX Import handlers
+  const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file) {
+      if (file.type === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' || 
+          file.type === 'application/vnd.ms-excel' ||
+          file.name.endsWith('.xlsx') || 
+          file.name.endsWith('.xls')) {
+        setXlsxFile(file);
+        setImportResults(null);
+      } else {
+        showToast('Please select an Excel file (.xlsx or .xls)', 'error');
+      }
+    }
+  };
+
+  const handleImportXLSX = async () => {
+    if (!xlsxFile) {
+      showToast('Please select an Excel file first', 'error');
+      return;
+    }
+
+    setImporting(true);
+    setImportResults(null);
+
+    try {
+      const reader = new FileReader();
+      reader.onload = async (e) => {
+        try {
+          const base64Content = e.target?.result as string;
+          
+          const response = await api.post('/parts/import-xlsx', {
+            fileData: base64Content,
+            fileName: xlsxFile.name,
+          });
+
+          // Handle response structure - backend returns { message, results }
+          const results = response.data.results || response.data;
+          setImportResults(results);
+          
+          if (results && results.failed === 0) {
+            showToast(`Successfully imported ${results.success} parts`, 'success');
+            setXlsxImportOpen(false);
+            setXlsxFile(null);
+            loadParts();
+            loadFilterOptions();
+          } else if (results) {
+            showToast(
+              `Import completed: ${results.success} successful, ${results.failed} failed`,
+              results.success > 0 ? 'success' : 'error'
+            );
+            if (results.success > 0) {
+              loadParts();
+              loadFilterOptions();
+            }
+          } else {
+            showToast('Import completed but no results returned', 'error');
+          }
+        } catch (error: any) {
+          console.error('XLSX import error:', error);
+          console.error('Full error response:', error.response);
+          
+          // Get detailed error message
+          let errorMessage = 'Failed to import Excel file';
+          if (error.response?.data) {
+            if (error.response.data.error) {
+              errorMessage = error.response.data.error;
+              if (error.response.data.details) {
+                errorMessage += `: ${error.response.data.details}`;
+              }
+            } else if (error.response.data.details) {
+              errorMessage = error.response.data.details;
+            } else if (error.response.data.message) {
+              errorMessage = error.response.data.message;
+            }
+          } else if (error.message) {
+            errorMessage = error.message;
+          }
+          
+          showToast(errorMessage, 'error');
+          
+          // Set import results even on error to show what happened
+          if (error.response?.data?.results) {
+            setImportResults(error.response.data.results);
+          }
+        } finally {
+          setImporting(false);
+        }
+      };
+
+      reader.onerror = () => {
+        showToast('Failed to read Excel file', 'error');
+        setImporting(false);
+      };
+
+      reader.readAsDataURL(xlsxFile);
+    } catch (error: any) {
+      console.error('XLSX import error:', error);
+      showToast('Failed to import Excel file', 'error');
+      setImporting(false);
+    }
+  };
+
+  const handleCloseImportDialog = () => {
+    setXlsxImportOpen(false);
+    setXlsxFile(null);
+    setImportResults(null);
+  };
+
   return (
     <div className="bg-gray-50 p-3 sm:p-4 md:p-6 min-h-screen w-full">
       <div className="max-w-full mx-auto w-full">
@@ -671,12 +790,24 @@ export default function PartsListPage() {
                     Cancel
                   </Button>
                 ) : (
-                  <Button
-                    onClick={handleNewPart}
-                    className="bg-primary-500 hover:bg-primary-600 text-white"
-                  >
-                    + New Part
-                  </Button>
+                  <>
+                    <Button
+                      onClick={() => setXlsxImportOpen(true)}
+                      variant="outline"
+                      className="border-primary-300 text-primary-700 hover:bg-primary-50"
+                    >
+                      <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+                      </svg>
+                      Import XLSX
+                    </Button>
+                    <Button
+                      onClick={handleNewPart}
+                      className="bg-primary-500 hover:bg-primary-600 text-white"
+                    >
+                      + New Part
+                    </Button>
+                  </>
                 )
               ) : activeTab === 'kits' ? (
                 isCreatingKit ? (
@@ -1537,6 +1668,129 @@ export default function PartsListPage() {
               </div>
             )}
           </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* XLSX Import Dialog */}
+      <Dialog open={xlsxImportOpen} onOpenChange={handleCloseImportDialog}>
+        <DialogContent className="sm:max-w-2xl w-[95%] max-w-2xl mx-auto">
+          <DialogHeader>
+            <DialogTitle className="text-xl font-semibold text-gray-900">Import Parts from Excel</DialogTitle>
+            <DialogDescription className="text-sm text-gray-600 mt-2">
+              Upload an Excel file (.xlsx) with the following columns: Part No, Master Part No, Brand, Description, Loc, Stock, Cost, Price, Cost Value
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 mt-4">
+            {/* File Input */}
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-gray-700">Select Excel File</label>
+              <div className="flex items-center gap-4">
+                <input
+                  type="file"
+                  accept=".xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel"
+                  onChange={handleFileSelect}
+                  className="block w-full text-sm text-gray-500
+                    file:mr-4 file:py-2 file:px-4
+                    file:rounded-lg file:border-0
+                    file:text-sm file:font-semibold
+                    file:bg-primary-50 file:text-primary-700
+                    hover:file:bg-primary-100
+                    cursor-pointer"
+                  disabled={importing}
+                />
+                {xlsxFile && (
+                  <span className="text-sm text-gray-600">{xlsxFile.name}</span>
+                )}
+              </div>
+            </div>
+
+            {/* Excel Format Info */}
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+              <h4 className="text-sm font-semibold text-blue-900 mb-2">Expected Excel Format:</h4>
+              <div className="text-xs text-blue-800 space-y-1">
+                <p>• First row should contain headers: Part No, Master Part No, Brand, Description, Loc, Stock, Cost, Price, Cost Value</p>
+                <p>• Part No is required for each row</p>
+                <p>• Stock, Cost, and Price should be numeric values</p>
+                <p>• Existing parts with the same Part No will be updated</p>
+                <p>• The first sheet in the workbook will be used for import</p>
+              </div>
+            </div>
+
+            {/* Import Results */}
+            {importResults && (
+              <div className="space-y-2">
+                <div className={`p-4 rounded-lg ${
+                  importResults.failed === 0 
+                    ? 'bg-green-50 border border-green-200' 
+                    : 'bg-yellow-50 border border-yellow-200'
+                }`}>
+                  <div className="flex items-center gap-2 mb-2">
+                    <svg className={`w-5 h-5 ${
+                      importResults.failed === 0 ? 'text-green-600' : 'text-yellow-600'
+                    }`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    <span className={`font-semibold ${
+                      importResults.failed === 0 ? 'text-green-900' : 'text-yellow-900'
+                    }`}>
+                      Import Results: {importResults.success} successful, {importResults.failed} failed
+                    </span>
+                  </div>
+                </div>
+
+                {importResults.errors.length > 0 && (
+                  <div className="max-h-60 overflow-y-auto border border-red-200 rounded-lg">
+                    <div className="bg-red-50 p-2 border-b border-red-200">
+                      <h5 className="text-sm font-semibold text-red-900">Errors:</h5>
+                    </div>
+                    <div className="divide-y divide-red-100">
+                      {importResults.errors.map((error, idx) => (
+                        <div key={idx} className="p-2 text-xs text-red-800">
+                          <span className="font-medium">Row {error.row}</span>
+                          {error.partNo && <span className="ml-2">(Part No: {error.partNo})</span>}
+                          <span className="ml-2">- {error.error}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          <DialogFooter className="mt-6">
+            <Button
+              variant="outline"
+              onClick={handleCloseImportDialog}
+              disabled={importing}
+              className="border-gray-300 text-gray-700 hover:bg-gray-50"
+            >
+              {importResults ? 'Close' : 'Cancel'}
+            </Button>
+            <Button
+              onClick={handleImportXLSX}
+              disabled={!xlsxFile || importing}
+              className="bg-primary-500 hover:bg-primary-600 text-white"
+            >
+              {importing ? (
+                <>
+                  <svg className="animate-spin w-4 h-4 mr-2" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  </svg>
+                  Importing...
+                </>
+              ) : (
+                <>
+                  <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+                  </svg>
+                  Import XLSX
+                </>
+              )}
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 

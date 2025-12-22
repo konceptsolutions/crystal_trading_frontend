@@ -11,7 +11,7 @@ export interface PartModel {
   id: string;
   partId: string;
   modelNo: string;
-  qtyUsed: number;
+  qtyUsed: number | undefined;
   tab: 'P1' | 'P2';
 }
 
@@ -28,7 +28,7 @@ export default function ModelsPanel({
   partName, 
   stockQuantity: initialStockQuantity = 0,
   models = [
-    { id: '', partId: '', modelNo: '', qtyUsed: 1, tab: 'P1' }
+    { id: '', partId: '', modelNo: '', qtyUsed: undefined, tab: 'P1' }
   ],
   onModelsChange
 }: ModelsPanelProps) {
@@ -52,7 +52,7 @@ export default function ModelsPanel({
     if (!partId) {
       if (onModelsChange && partIdChanged) {
         onModelsChange([
-          { id: '', partId: '', modelNo: '', qtyUsed: 1, tab: 'P1' }
+          { id: '', partId: '', modelNo: '', qtyUsed: undefined, tab: 'P1' }
         ]);
       }
       setStockQuantity(0);
@@ -91,10 +91,10 @@ export default function ModelsPanel({
             id: model.id || '',
             partId: partId,
             modelNo: model.modelNo || '',
-            qtyUsed: model.qtyUsed || 1,
+            qtyUsed: model.qtyUsed ?? undefined,
             tab: model.tab || 'P1'
           })) : [
-            { id: '', partId: partId, modelNo: '', qtyUsed: 1, tab: 'P1' }
+            { id: '', partId: partId, modelNo: '', qtyUsed: undefined, tab: 'P1' }
           ];
           
           console.log('ModelsPanel: Loaded models from API:', modelsToShow);
@@ -108,7 +108,7 @@ export default function ModelsPanel({
           // Show empty row even on error
           if (onModelsChange) {
             onModelsChange([
-              { id: '', partId: partId || '', modelNo: '', qtyUsed: 1, tab: 'P1' }
+              { id: '', partId: partId || '', modelNo: '', qtyUsed: undefined, tab: 'P1' }
             ]);
           }
           setStockQuantity(0);
@@ -152,7 +152,7 @@ export default function ModelsPanel({
     if (onModelsChange) {
       onModelsChange([
         ...models,
-        { id: '', partId: partId || '', modelNo: '', qtyUsed: 1, tab: 'P1' }
+        { id: '', partId: partId || '', modelNo: '', qtyUsed: undefined, tab: 'P1' }
       ]);
     }
   };
@@ -184,7 +184,7 @@ export default function ModelsPanel({
         // If we have only 1, just clear the content but keep the row
         const clearedModels = models.map((model, i) => 
           i === index 
-            ? { ...model, modelNo: '', qtyUsed: 1 }
+            ? { ...model, modelNo: '', qtyUsed: undefined }
             : model
         );
         onModelsChange(clearedModels);
@@ -210,12 +210,12 @@ export default function ModelsPanel({
               variant="outline"
               size="sm"
               onClick={addModel}
-              className="flex items-center gap-1.5 px-3 py-2 h-8 text-xs font-medium border-primary-400 text-primary-600 hover:bg-primary-50 hover:border-primary-500 hover:text-primary-700 shadow-sm hover:shadow-md transition-all duration-200 rounded-md"
+              className="flex items-center justify-center gap-2 px-4 py-2 h-9 text-sm font-semibold whitespace-nowrap border-primary-500 text-primary-600 bg-white hover:bg-primary-50 hover:border-primary-600 hover:text-primary-700 active:bg-primary-100 shadow-sm hover:shadow-md transition-all duration-200 rounded-lg"
             >
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 4v16m8-8H4" />
               </svg>
-              Add More
+              <span>Add More</span>
             </Button>
           </div>
         </div>
@@ -238,7 +238,7 @@ export default function ModelsPanel({
                 <TableRow className="border-b border-gray-200">
                   <TableHead className="h-8 px-2 text-xs font-semibold text-gray-700">Model</TableHead>
                   <TableHead className="h-8 px-2 text-xs font-semibold text-gray-700 text-right">Qty. Used</TableHead>
-                  <TableHead className="h-8 px-2 text-xs font-semibold text-gray-700 text-right"> </TableHead>
+                  <TableHead className="h-8 px-2 text-xs font-semibold text-gray-700 text-center w-12">Action</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -261,32 +261,22 @@ export default function ModelsPanel({
                             <Input
                               type="number"
                               min="1"
-                              value={model.qtyUsed || 1}
-                              onChange={(e) => updateModel(index, 'qtyUsed', parseInt(e.target.value) || 1)}
-                              className="h-7 w-16 text-xs text-right border-gray-200 focus:border-primary-400"
+                              value={model.qtyUsed ?? ''}
+                              onChange={(e) => {
+                                const value = e.target.value;
+                                updateModel(index, 'qtyUsed', value === '' ? undefined : parseInt(value) || undefined);
+                              }}
+                              className="h-7 w-16 text-xs text-right border-gray-200 focus:border-primary-400 [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none [-moz-appearance:textfield]"
+                              placeholder=""
                             />
                           </div>
-                        </TableCell>
-                        <TableCell className="px-2 py-1.5 text-right">
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => removeModel(index)}
-                            className="h-9 w-9 p-0 text-red-600 border border-red-200 hover:text-red-700 hover:bg-red-50 hover:border-red-300 inline-flex items-center justify-center rounded-md"
-                            title={models.length > 1 ? 'Remove row' : 'Clear row'}
-                          >
-                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" />
-                            </svg>
-                          </Button>
                         </TableCell>
                       </TableRow>
                     );
                   })
                 ) : (
                   <TableRow>
-                    <TableCell colSpan={3} className="px-2 py-4 text-center text-gray-500 text-xs">
+                    <TableCell colSpan={2} className="px-2 py-4 text-center text-gray-500 text-xs">
                       No models added yet. Enter a model number above.
                     </TableCell>
                   </TableRow>

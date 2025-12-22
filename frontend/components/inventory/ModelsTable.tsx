@@ -135,7 +135,7 @@ export default function ModelsTable({ refreshTrigger = 0 }: ModelsTableProps) {
         m.id === modelId 
           ? {
               modelNo: editData.modelNo,
-              qtyUsed: parseInt(editData.qtyUsed) || 1,
+              qtyUsed: editData.qtyUsed === '' || editData.qtyUsed === undefined ? 1 : (parseInt(editData.qtyUsed) || 1),
               tab: editData.tab
             }
           : {
@@ -314,7 +314,7 @@ export default function ModelsTable({ refreshTrigger = 0 }: ModelsTableProps) {
                         <Input
                           type="number"
                           min="1"
-                          value={editData.qtyUsed || ''}
+                          value={editData.qtyUsed ?? ''}
                           onChange={(e) => setEditData((prev: any) => ({ ...prev, qtyUsed: e.target.value }))}
                           className="h-8 text-sm w-20"
                           placeholder="Qty"

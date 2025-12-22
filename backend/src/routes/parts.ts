@@ -3,6 +3,8 @@ import { z } from 'zod';
 import { prisma } from '../utils/prisma';
 import { verifyToken, AuthRequest } from '../middleware/auth';
 
+import * as XLSX from 'xlsx';
+
 const router = express.Router();
 
 const partModelInputSchema = z.object({
@@ -388,6 +390,429 @@ router.get('/search/:query', async (req: AuthRequest, res) => {
   } catch (error) {
     console.error('Search parts error:', error);
     res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// XLSX Import endpoint
+router.post('/import-xlsx', async (req: AuthRequest, res) => {
+  try {
+    console.log('XLSX import request received');
+    const { fileData, fileName } = req.body;
+
+    if (!fileData) {
+      console.error('No file data provided');
+      return res.status(400).json({ error: 'File data is required' });
+    }
+
+    console.log('File data received, length:', typeof fileData === 'string' ? fileData.length : 'not a string');
+
+    // Convert base64 to buffer if needed
+    let fileBuffer: Buffer;
+    try {
+      if (typeof fileData === 'string') {
+        // Remove data URL prefix if present (e.g., "data:application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;base64,")
+        const base64Data = fileData.includes(',') ? fileData.split(',')[1] : fileData;
+        fileBuffer = Buffer.from(base64Data, 'base64');
+        
+        if (fileBuffer.length === 0) {
+          return res.status(400).json({ error: 'Invalid file data: empty buffer after decoding' });
+        }
+      } else {
+        return res.status(400).json({ error: 'Invalid file data format: expected string' });
+      }
+    } catch (error: any) {
+      console.error('Error decoding base64:', error);
+      return res.status(400).json({ error: `Failed to decode file data: ${error.message}` });
+    }
+
+    // Parse XLSX file
+    let workbook: XLSX.WorkBook;
+    try {
+      console.log('Attempting to parse XLSX file, buffer size:', fileBuffer.length);
+      
+      // Check if XLSX is available
+      if (!XLSX || !XLSX.read) {
+        console.error('XLSX library not available');
+        return res.status(500).json({ error: 'XLSX library is not available. Please ensure xlsx package is installed and backend is rebuilt.' });
+      }
+      
+      workbook = XLSX.read(fileBuffer, { type: 'buffer' });
+      console.log('XLSX file parsed successfully, sheets:', workbook.SheetNames?.length || 0);
+    } catch (error: any) {
+      console.error('Error parsing XLSX file:', error);
+      console.error('Error stack:', error.stack);
+      return res.status(400).json({ error: `Failed to parse Excel file: ${error.message}. Please ensure the file is a valid .xlsx or .xls file.` });
+    }
+    
+    // Get the first sheet
+    const sheetName = workbook.SheetNames[0];
+    if (!sheetName) {
+      return res.status(400).json({ error: 'Excel file has no sheets' });
+    }
+
+    const worksheet = workbook.Sheets[sheetName];
+    
+    // First, get raw data to find header row
+    let rawData: any[][];
+    try {
+      rawData = XLSX.utils.sheet_to_json(worksheet, {
+        defval: null,
+        raw: false,
+        header: 1, // Get as array of arrays
+      }) as any[][];
+    } catch (error: any) {
+      console.error('Error converting sheet to JSON:', error);
+      return res.status(400).json({ error: `Failed to read sheet data: ${error.message}` });
+    }
+
+    if (!rawData || rawData.length === 0) {
+      return res.status(400).json({ error: 'Excel file is empty or has no data rows' });
+    }
+
+    // Find header row by looking for "Part No" column
+    let headerRowIndex = -1;
+    let headerRow: any[] = [];
+    for (let i = 0; i < Math.min(30, rawData.length); i++) {
+      const row = rawData[i];
+      if (row && Array.isArray(row)) {
+        // Check if this row contains "Part No" as a header
+        const rowStr = row.map(c => String(c || '').toLowerCase().trim()).join('|');
+        // Look for "part no" as a standalone header (not part of another word)
+        if (rowStr.includes('part no') || rowStr.includes('partno')) {
+          // Verify this is actually a header row by checking if it has multiple column headers
+          const nonEmptyCells = row.filter(c => c !== null && c !== undefined && String(c).trim() !== '');
+          if (nonEmptyCells.length >= 3) { // Header row should have at least 3 columns
+            headerRowIndex = i;
+            headerRow = row;
+            break;
+          }
+        }
+      }
+    }
+
+    // If header row found, use it; otherwise assume first row
+    let records: any[];
+    if (headerRowIndex >= 0) {
+      console.log(`Found header row at index ${headerRowIndex}`);
+      // Convert header row to column mapping
+      const columnMap: { [key: string]: number } = {};
+      headerRow.forEach((header, index) => {
+        if (header && String(header).trim()) {
+          const headerStr = String(header).trim();
+          columnMap[headerStr.toLowerCase()] = index;
+          // Also map common variations
+          if (headerStr.toLowerCase().includes('part no')) {
+            columnMap['part no'] = index;
+            columnMap['partno'] = index;
+          }
+          if (headerStr.toLowerCase().includes('master part')) {
+            columnMap['master part no'] = index;
+            columnMap['masterpartno'] = index;
+          }
+          if (headerStr.toLowerCase().includes('stock')) {
+            columnMap['stock'] = index;
+            columnMap['quantity'] = index;
+            columnMap['qty'] = index;
+          }
+          if (headerStr.toLowerCase().includes('cost') && !headerStr.toLowerCase().includes('value')) {
+            columnMap['cost'] = index;
+          }
+          if (headerStr.toLowerCase().includes('price')) {
+            columnMap['price'] = index;
+          }
+          if (headerStr.toLowerCase().includes('loc') || headerStr.toLowerCase().includes('location')) {
+            columnMap['loc'] = index;
+            columnMap['location'] = index;
+          }
+          if (headerStr.toLowerCase().includes('brand')) {
+            columnMap['brand'] = index;
+          }
+          if (headerStr.toLowerCase().includes('description') || headerStr.toLowerCase().includes('desc')) {
+            columnMap['description'] = index;
+            columnMap['desc'] = index;
+          }
+        }
+      });
+
+      // Convert data rows (starting after header row) to objects
+      records = [];
+      for (let i = headerRowIndex + 1; i < rawData.length; i++) {
+        const row = rawData[i];
+        if (!row || !Array.isArray(row)) continue;
+        
+        // Skip empty rows - check if row has meaningful data
+        const hasData = row.some((cell, idx) => {
+          if (cell === null || cell === undefined) return false;
+          const cellStr = String(cell).trim();
+          // Skip if cell is empty or just whitespace
+          if (cellStr === '') return false;
+          // For the first column (Part No), it should have a value for a valid row
+          if (idx === 0 && columnMap['part no'] === 0 && cellStr !== '') return true;
+          // For other columns, any non-empty value indicates data
+          return cellStr !== '';
+        });
+        if (!hasData) continue;
+
+        const record: any = {};
+        // First, add values using column map (lowercase keys)
+        Object.keys(columnMap).forEach(key => {
+          const colIndex = columnMap[key];
+          if (colIndex !== undefined && colIndex !== null && colIndex >= 0 && colIndex < row.length) {
+            const value = row[colIndex];
+            record[key] = value !== null && value !== undefined ? String(value).trim() : value;
+          }
+        });
+        // Also add by original header names (preserving original case)
+        headerRow.forEach((header, index) => {
+          if (header && String(header).trim() && index < row.length) {
+            const headerName = String(header).trim();
+            const value = row[index];
+            record[headerName] = value !== null && value !== undefined ? String(value).trim() : value;
+            // Also add lowercase version if not already present
+            const headerLower = headerName.toLowerCase();
+            if (!record[headerLower] && value !== null && value !== undefined) {
+              record[headerLower] = String(value).trim();
+            }
+          }
+        });
+        records.push(record);
+      }
+    } else {
+      // Fallback: use standard XLSX conversion (assumes headers in first row)
+      console.log('Header row not found, using first row as headers');
+      try {
+        records = XLSX.utils.sheet_to_json(worksheet, {
+          defval: null,
+          raw: false,
+        });
+      } catch (error: any) {
+        console.error('Error converting sheet to JSON:', error);
+        return res.status(400).json({ error: `Failed to read sheet data: ${error.message}` });
+      }
+    }
+
+    if (!records || records.length === 0) {
+      return res.status(400).json({ error: 'Excel file is empty or has no data rows' });
+    }
+
+    console.log(`Processing ${records.length} records`);
+
+    const results = {
+      success: 0,
+      failed: 0,
+      errors: [] as Array<{ row: number; partNo?: string; error: string }>,
+    };
+
+    // Helper function to find column value (case-insensitive)
+    const getColumnValue = (row: any, possibleNames: string[]): string | null => {
+      if (!row || typeof row !== 'object') {
+        return null;
+      }
+      
+      // First try exact match
+      for (const name of possibleNames) {
+        if (row[name] !== undefined && row[name] !== null && row[name] !== '') {
+          return String(row[name]);
+        }
+      }
+      
+      // Try case-insensitive match
+      const rowKeys = Object.keys(row);
+      for (const name of possibleNames) {
+        const foundKey = rowKeys.find(key => key.toLowerCase().trim() === name.toLowerCase().trim());
+        if (foundKey && row[foundKey] !== undefined && row[foundKey] !== null && row[foundKey] !== '') {
+          return String(row[foundKey]);
+        }
+      }
+      
+      // Try partial match (e.g., "Part No" might be stored as "Part No " with trailing space)
+      for (const name of possibleNames) {
+        const nameLower = name.toLowerCase().trim();
+        for (const key of rowKeys) {
+          if (key.toLowerCase().trim() === nameLower) {
+            const value = row[key];
+            if (value !== undefined && value !== null && String(value).trim() !== '') {
+              return String(value).trim();
+            }
+          }
+        }
+      }
+      
+      return null;
+    };
+
+    // Process each record
+    for (let i = 0; i < records.length; i++) {
+      const row = records[i];
+      const rowNumber = i + 2; // +2 because row 1 is header, and arrays are 0-indexed
+
+      try {
+        // Map Excel columns to database fields
+        // Expected columns: Part No, Master Part No, Brand, Description, Loc, Stock, Cost, Price, Cost Value
+        const partNo = getColumnValue(row, ['Part No', 'part no', 'PartNo', 'partno', 'Part Number', 'part number']) || '';
+        const masterPartNo = getColumnValue(row, ['Master Part No', 'master part no', 'MasterPartNo', 'masterpartno', 'Master Part Number', 'master part number']);
+        const brand = getColumnValue(row, ['Brand', 'brand']);
+        const description = getColumnValue(row, ['Description', 'description', 'Desc', 'desc']);
+        const location = getColumnValue(row, ['Loc', 'loc', 'Location', 'location']);
+        const stockQty = getColumnValue(row, ['Stock', 'stock', 'Quantity', 'quantity', 'Qty', 'qty']) || '0';
+        const cost = getColumnValue(row, ['Cost', 'cost']);
+        const price = getColumnValue(row, ['Price', 'price']);
+        // Cost Value is calculated, so we can ignore it or use it for validation
+
+        // Check if row is completely empty - skip silently
+        const hasAnyData = partNo || masterPartNo || brand || description || location || 
+                          (stockQty && stockQty !== '0') || cost || price;
+        
+        if (!hasAnyData) {
+          // Completely empty row, skip it
+          continue;
+        }
+
+        // Row has some data but missing Part No - report error
+        if (!partNo || partNo.trim() === '') {
+          results.failed++;
+          results.errors.push({
+            row: rowNumber,
+            error: 'Part No is required',
+          });
+          continue;
+        }
+
+        // Parse numeric values with better error handling
+        let stockQuantity = 0;
+        try {
+          const stockStr = stockQty?.toString().replace(/,/g, '').trim() || '0';
+          stockQuantity = parseInt(stockStr, 10);
+          if (isNaN(stockQuantity)) {
+            stockQuantity = 0;
+          }
+        } catch (e) {
+          stockQuantity = 0;
+        }
+
+        let costValue: number | null = null;
+        if (cost) {
+          try {
+            const costStr = cost.toString().replace(/,/g, '').trim();
+            const parsed = parseFloat(costStr);
+            if (!isNaN(parsed)) {
+              costValue = parsed;
+            }
+          } catch (e) {
+            // Keep as null if parsing fails
+          }
+        }
+
+        let priceValue: number | null = null;
+        if (price) {
+          try {
+            const priceStr = price.toString().replace(/,/g, '').trim();
+            const parsed = parseFloat(priceStr);
+            if (!isNaN(parsed)) {
+              priceValue = parsed;
+            }
+          } catch (e) {
+            // Keep as null if parsing fails
+          }
+        }
+
+        // Check if part already exists
+        const existingPart = await prisma.part.findUnique({
+          where: { partNo: partNo.trim() },
+        });
+
+        if (existingPart) {
+          // Update existing part
+          await prisma.$transaction(async (tx) => {
+            await tx.part.update({
+              where: { id: existingPart.id },
+              data: {
+                masterPartNo: masterPartNo?.trim() || existingPart.masterPartNo,
+                brand: brand?.trim() || existingPart.brand,
+                description: description?.trim() || existingPart.description,
+                cost: costValue !== null ? costValue : existingPart.cost,
+                priceA: priceValue !== null ? priceValue : existingPart.priceA,
+              },
+            });
+
+            // Update stock
+            await tx.stock.upsert({
+              where: { partId: existingPart.id },
+              update: {
+                quantity: stockQuantity,
+                location: location?.trim() || undefined,
+              },
+              create: {
+                partId: existingPart.id,
+                quantity: stockQuantity,
+                location: location?.trim() || undefined,
+              },
+            });
+          });
+          results.success++;
+        } else {
+          // Create new part
+          await prisma.$transaction(async (tx) => {
+            const part = await tx.part.create({
+              data: {
+                partNo: partNo.trim(),
+                masterPartNo: masterPartNo?.trim() || null,
+                brand: brand?.trim() || null,
+                description: description?.trim() || null,
+                cost: costValue,
+                priceA: priceValue,
+                status: 'A',
+              },
+            });
+
+            // Create stock record
+            await tx.stock.create({
+              data: {
+                partId: part.id,
+                quantity: stockQuantity,
+                location: location?.trim() || null,
+              },
+            });
+          });
+          results.success++;
+        }
+      } catch (error: any) {
+        results.failed++;
+        const partNoValue = getColumnValue(row, ['Part No', 'part no', 'PartNo', 'partno', 'Part Number', 'part number']) || 'Unknown';
+        results.errors.push({
+          row: rowNumber,
+          partNo: partNoValue.toString(),
+          error: error.message || 'Unknown error',
+        });
+        console.error(`Error processing row ${rowNumber}:`, error);
+      }
+    }
+
+    res.json({
+      message: `Import completed: ${results.success} successful, ${results.failed} failed`,
+      results,
+    });
+  } catch (error: any) {
+    console.error('XLSX import error:', error);
+    console.error('Error name:', error.name);
+    console.error('Error message:', error.message);
+    console.error('Error stack:', error.stack);
+    
+    // Provide more helpful error messages
+    let errorMessage = 'Failed to import XLSX file';
+    let errorDetails = error.message || 'Unknown error occurred';
+    
+    if (error.message?.includes('Cannot find module')) {
+      errorDetails = 'XLSX library not found. Please ensure xlsx package is installed and backend is rebuilt.';
+    } else if (error.message?.includes('Unexpected token')) {
+      errorDetails = 'Invalid file format. Please ensure the file is a valid Excel (.xlsx or .xls) file.';
+    }
+    
+    res.status(500).json({
+      error: errorMessage,
+      details: errorDetails,
+      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined,
+    });
   }
 });
 

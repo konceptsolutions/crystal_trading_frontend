@@ -59,14 +59,9 @@ export default function AutocompleteInput({
       const filtered = options.filter((opt) =>
         opt.toLowerCase().includes(inputValue.toLowerCase())
       );
-      // If the exact value doesn't exist and user typed something, show option to add it
-      if (!options.includes(inputValue) && inputValue.trim() !== '' && onAddNew) {
-        setFilteredOptions([...filtered, `+ Add "${inputValue}"`]);
-      } else {
-        setFilteredOptions(filtered);
-      }
+      setFilteredOptions(filtered);
     }
-  }, [inputValue, options, onAddNew]);
+  }, [inputValue, options]);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -89,47 +84,28 @@ export default function AutocompleteInput({
   };
 
   const handleSelectOption = async (option: string) => {
-    if (option.startsWith('+ Add "')) {
-      // Extract the value to add
-      const newValue = option.replace('+ Add "', '').replace('"', '');
-      if (onAddNew && newValue.trim()) {
-        setIsAdding(true);
-        try {
-          await onAddNew(newValue.trim());
-          setInputValue(newValue.trim());
-          onChange(newValue.trim());
-        } catch (error) {
-          console.error('Failed to add new value:', error);
-        } finally {
-          setIsAdding(false);
-        }
-      }
-    } else {
-      setInputValue(option);
-      onChange(option);
-    }
+    setInputValue(option);
+    onChange(option);
     setIsOpen(false);
   };
 
   const handleKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter') {
       e.preventDefault();
-      if (inputValue.trim() && !options.includes(inputValue.trim())) {
-        // Add new value on Enter
-        if (onAddNew) {
-          setIsAdding(true);
-          onAddNew(inputValue.trim())
-            .then(() => {
-              setInputValue(inputValue.trim());
-              onChange(inputValue.trim());
-            })
-            .catch((error) => {
-              console.error('Failed to add new value:', error);
-            })
-            .finally(() => {
-              setIsAdding(false);
-            });
-        }
+      if (inputValue.trim() && onAddNew) {
+        // Save/add new value on Enter
+        setIsAdding(true);
+        onAddNew(inputValue.trim())
+          .then(() => {
+            setInputValue(inputValue.trim());
+            onChange(inputValue.trim());
+          })
+          .catch((error) => {
+            console.error('Failed to add new value:', error);
+          })
+          .finally(() => {
+            setIsAdding(false);
+          });
       }
       setIsOpen(false);
     } else if (e.key === 'Escape') {
@@ -186,9 +162,7 @@ export default function AutocompleteInput({
                 <div
                   key={index}
                   onClick={() => handleSelectOption(option)}
-                  className={`px-4 py-2 cursor-pointer hover:bg-primary-50 ${
-                    option.startsWith('+ Add "') ? 'text-primary-600 font-medium border-t border-gray-200' : 'text-gray-900'
-                  }`}
+                  className="px-4 py-2 cursor-pointer hover:bg-primary-50 text-gray-900"
                 >
                   {option}
                 </div>

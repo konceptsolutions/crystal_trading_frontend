@@ -171,10 +171,42 @@ npm run build    # Build for production
 npm start        # Run production build
 ```
 
+## Production Deployment
+
+### 🚀 Single Command Installation (Recommended)
+
+**No Docker required!** Just upload files and run:
+
+```bash
+sudo bash install-production.sh
+```
+
+See **[INSTALL.md](./INSTALL.md)** for complete instructions.
+
+### Alternative: Docker Setup
+
+If you prefer Docker, see:
+- **[Production Deployment Guide](./PRODUCTION_DEPLOYMENT.md)** - Docker-based deployment
+- **[Quick Start Production](./README_PRODUCTION.md)** - Docker quick start
+- **[Quick Reference](./QUICK_REFERENCE.md)** - Command reference
+
+### What Gets Installed
+
+The native installation script (`install-production.sh`) automatically:
+- ✅ Installs Node.js, PostgreSQL, Nginx, PM2
+- ✅ Sets up database and user
+- ✅ Builds backend and frontend
+- ✅ Configures reverse proxy
+- ✅ Sets up SSL certificates (if domain provided)
+- ✅ Starts all services with PM2
+- ✅ Handles errors automatically
+
 ## Notes
 
-- Make sure PostgreSQL is running before starting the backend
-- Update the `DATABASE_URL` in backend `.env` to match your PostgreSQL setup
+- **Development**: This project uses SQLite for local development
+- **Production**: Use PostgreSQL for production (see production guides)
+- Make sure PostgreSQL is running before starting the backend in production
+- Update the `DATABASE_URL` in `.env` to match your database setup
 - The JWT_SECRET should be a strong, random string in production
 - All API calls from the frontend automatically include the authentication token
 

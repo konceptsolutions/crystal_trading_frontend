@@ -10,7 +10,9 @@ const api = axios.create({
   headers: {
     'Content-Type': 'application/json',
   },
-  timeout: 10000, // 10 second timeout
+  timeout: 120000, // 120 second timeout for large file uploads
+  maxBodyLength: Infinity,
+  maxContentLength: Infinity,
 });
 
 // Add token to requests

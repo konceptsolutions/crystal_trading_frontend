@@ -1,0 +1,29 @@
+[
+  {
+    "id": "transfer-1766150218049-f7dl1iult",
+    "transferNo": "STR-2512-370",
+    "transferDate": "2025-12-19",
+    "status": "draft",
+    "notes": "",
+    "items": [
+      {
+        "partId": "cmjb2i52s0041wpah32hnmpjp",
+        "partNo": "ELC-1766039805979-001",
+        "description": "Engine Wiring Harness",
+        "fromStore": "cmj9tt3bb00018qrvjn61dxkb",
+        "fromRack": "",
+        "fromShelf": "",
+        "toStore": "cmja1apdi0006r1kgeht45zr6",
+        "toRack": "",
+        "toShelf": "",
+        "transferQty": 1,
+        "availableQty": 9,
+        "remarks": ""
+      }
+    ],
+    "fromStoreId": "cmj9tt3bb00018qrvjn61dxkb",
+    "toStoreId": "cmja1apdi0006r1kgeht45zr6",
+    "createdAt": "2025-12-19T13:16:58.049Z",
+    "updatedAt": "2025-12-19T13:16:58.049Z"
+  }
+]

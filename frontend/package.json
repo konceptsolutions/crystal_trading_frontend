@@ -5,7 +5,8 @@
   "scripts": {
     "dev": "prisma generate && tsx server.ts",
     "dev:next": "prisma generate && next dev",
-    "build": "prisma generate && prisma db push && next build",
+    "build": "prisma generate && next build",
+    "build:skip-prisma": "next build",
     "start": "next start",
     "lint": "next lint",
     "postinstall": "prisma generate",
@@ -18,7 +19,6 @@
     "@hookform/resolvers": "^3.3.2",
     "@prisma/client": "^5.7.1",
     "@prisma/extension-accelerate": "^3.0.1",
-    "axios": "^1.6.2",
     "bcryptjs": "^2.4.3",
     "cors": "^2.8.5",
     "date-fns": "^3.0.6",
@@ -45,12 +45,14 @@
     "@types/react": "^18.2.45",
     "@types/react-dom": "^18.2.18",
     "autoprefixer": "^10.4.16",
+    "axios": "^1.13.2",
     "eslint": "^8.56.0",
     "eslint-config-next": "14.0.4",
     "postcss": "^8.4.32",
     "prisma": "^5.7.1",
     "tailwindcss": "^3.4.0",
     "tsx": "^4.7.0",
-    "typescript": "^5.3.3"
+    "typescript": "^5.3.3",
+    "xlsx": "^0.18.5"
   }
 }

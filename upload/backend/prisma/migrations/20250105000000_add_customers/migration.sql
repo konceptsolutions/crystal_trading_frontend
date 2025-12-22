@@ -1,0 +1,61 @@
+-- CreateTable
+CREATE TABLE "Customer" (
+    "id" TEXT NOT NULL PRIMARY KEY,
+    "name" TEXT NOT NULL,
+    "email" TEXT,
+    "phone" TEXT,
+    "address" TEXT,
+    "cnic" TEXT,
+    "status" TEXT NOT NULL DEFAULT 'A',
+    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" DATETIME NOT NULL
+);
+
+-- RedefineTables
+PRAGMA defer_foreign_keys=ON;
+PRAGMA foreign_keys=OFF;
+CREATE TABLE "new_SalesInvoice" (
+    "id" TEXT NOT NULL PRIMARY KEY,
+    "invoiceNo" TEXT NOT NULL,
+    "quotationId" TEXT,
+    "customerId" TEXT,
+    "customerName" TEXT NOT NULL,
+    "customerEmail" TEXT,
+    "customerPhone" TEXT,
+    "customerAddress" TEXT,
+    "invoiceDate" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "dueDate" DATETIME NOT NULL,
+    "status" TEXT NOT NULL DEFAULT 'draft',
+    "subTotal" REAL NOT NULL DEFAULT 0,
+    "tax" REAL NOT NULL DEFAULT 0,
+    "discount" REAL NOT NULL DEFAULT 0,
+    "totalAmount" REAL NOT NULL DEFAULT 0,
+    "paidAmount" REAL NOT NULL DEFAULT 0,
+    "balanceAmount" REAL NOT NULL DEFAULT 0,
+    "notes" TEXT,
+    "createdBy" TEXT,
+    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" DATETIME NOT NULL,
+    CONSTRAINT "SalesInvoice_customerId_fkey" FOREIGN KEY ("customerId") REFERENCES "Customer" ("id") ON DELETE SET NULL ON UPDATE CASCADE
+);
+INSERT INTO "new_SalesInvoice" ("balanceAmount", "createdAt", "createdBy", "customerAddress", "customerEmail", "customerName", "customerPhone", "discount", "dueDate", "id", "invoiceDate", "invoiceNo", "notes", "paidAmount", "quotationId", "status", "subTotal", "tax", "totalAmount", "updatedAt") SELECT "balanceAmount", "createdAt", "createdBy", "customerAddress", "customerEmail", "customerName", "customerPhone", "discount", "dueDate", "id", "invoiceDate", "invoiceNo", "notes", "paidAmount", "quotationId", "status", "subTotal", "tax", "totalAmount", "updatedAt" FROM "SalesInvoice";
+DROP TABLE "SalesInvoice";
+ALTER TABLE "new_SalesInvoice" RENAME TO "SalesInvoice";
+CREATE UNIQUE INDEX "SalesInvoice_invoiceNo_key" ON "SalesInvoice"("invoiceNo");
+CREATE INDEX "SalesInvoice_invoiceNo_idx" ON "SalesInvoice"("invoiceNo");
+CREATE INDEX "SalesInvoice_status_idx" ON "SalesInvoice"("status");
+CREATE INDEX "SalesInvoice_invoiceDate_idx" ON "SalesInvoice"("invoiceDate");
+CREATE INDEX "SalesInvoice_customerName_idx" ON "SalesInvoice"("customerName");
+CREATE INDEX "SalesInvoice_customerId_idx" ON "SalesInvoice"("customerId");
+PRAGMA foreign_keys=ON;
+PRAGMA defer_foreign_keys=OFF;
+
+-- CreateIndex
+CREATE INDEX "Customer_name_idx" ON "Customer"("name");
+
+-- CreateIndex
+CREATE INDEX "Customer_status_idx" ON "Customer"("status");
+
+-- CreateIndex
+CREATE INDEX "Customer_phone_idx" ON "Customer"("phone");
+
