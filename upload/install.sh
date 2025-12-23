@@ -1010,6 +1010,224 @@ setup_frontend() {
 }
 
 ################################################################################
+# Clean PM2 and Ports - Comprehensive Cleanup
+################################################################################
+
+clean_pm2_and_ports() {
+    print_header "Cleaning PM2 and Freeing Ports"
+    
+    # Stop and delete ALL PM2 processes (as all users)
+    print_info "Stopping all PM2 processes..."
+    pm2 stop all 2>/dev/null || true
+    pm2 delete all 2>/dev/null || true
+    
+    # Reset PM2 completely
+    print_info "Resetting PM2..."
+    pm2 kill 2>/dev/null || true
+    pm2 flush 2>/dev/null || true
+    pm2 reset all 2>/dev/null || true
+    
+    # Remove PM2 startup script
+    pm2 unstartup 2>/dev/null || true
+    
+    # Stop systemd services
+    print_info "Stopping systemd services..."
+    systemctl stop kso-backend 2>/dev/null || true
+    systemctl stop kso-frontend 2>/dev/null || true
+    systemctl stop kso 2>/dev/null || true
+    sleep 2
+    
+    # Kill all processes on port 5000 (backend)
+    print_info "Freeing port 5000 (backend)..."
+    if command -v lsof &> /dev/null; then
+        PIDS=$(lsof -ti:5000 2>/dev/null || echo "")
+        for pid in $PIDS; do
+            kill -9 $pid 2>/dev/null || true
+            sleep 1
+        done
+    fi
+    if command -v fuser &> /dev/null; then
+        fuser -k 5000/tcp 2>/dev/null || true
+    fi
+    pkill -9 -f "node.*backend" 2>/dev/null || true
+    pkill -9 -f "dist/server.js" 2>/dev/null || true
+    
+    # Kill all processes on port 3000 (frontend)
+    print_info "Freeing port 3000 (frontend)..."
+    if command -v lsof &> /dev/null; then
+        PIDS=$(lsof -ti:3000 2>/dev/null || echo "")
+        for pid in $PIDS; do
+            kill -9 $pid 2>/dev/null || true
+            sleep 1
+        done
+    fi
+    if command -v fuser &> /dev/null; then
+        fuser -k 3000/tcp 2>/dev/null || true
+    fi
+    pkill -9 -f "node.*frontend" 2>/dev/null || true
+    pkill -9 -f "next.*start" 2>/dev/null || true
+    
+    # Kill all node processes owned by kso user
+    print_info "Killing node processes for kso user..."
+    pkill -9 -u kso node 2>/dev/null || true
+    
+    # Wait for ports to be free
+    sleep 3
+    
+    print_success "PM2 and ports cleaned"
+}
+
+################################################################################
+# Start Backend with Error Recovery
+################################################################################
+
+start_backend_with_recovery() {
+    print_header "Starting Backend Server"
+    
+    cd "$APP_DIR/backend"
+    
+    # Ensure .env exists
+    if [ ! -f ".env" ]; then
+        print_warning ".env file not found, creating default..."
+        cat > .env <<EOF
+NODE_ENV=production
+PORT=5000
+DATABASE_URL=postgresql://${DB_USER}:${DB_PASSWORD}@localhost:5432/${DB_NAME}?schema=public
+JWT_SECRET=${JWT_SECRET}
+JWT_EXPIRES_IN=7d
+EOF
+    fi
+    
+    # Generate Prisma client
+    print_info "Generating Prisma client..."
+    sudo -u "$SERVICE_USER" npx prisma generate 2>/dev/null || {
+        print_warning "Prisma generate failed, trying as root..."
+        npx prisma generate
+    }
+    
+    # Check database and apply schema
+    print_info "Checking database configuration..."
+    if grep -q "provider = \"postgresql\"" prisma/schema.prisma 2>/dev/null; then
+        print_info "PostgreSQL detected, applying schema..."
+        sudo -u "$SERVICE_USER" npx prisma migrate deploy 2>/dev/null || {
+            sudo -u "$SERVICE_USER" npx prisma db push --accept-data-loss 2>/dev/null || {
+                print_warning "Database operations failed, continuing anyway..."
+            }
+        }
+    fi
+    
+    # Verify port 5000 is free
+    MAX_RETRIES=5
+    RETRY=0
+    while [ $RETRY -lt $MAX_RETRIES ]; do
+        if lsof -Pi :5000 -sTCP:LISTEN -t >/dev/null 2>&1; then
+            print_warning "Port 5000 still in use, retrying cleanup (attempt $((RETRY+1))/$MAX_RETRIES)..."
+            clean_pm2_and_ports
+            RETRY=$((RETRY+1))
+            sleep 2
+        else
+            break
+        fi
+    done
+    
+    # Start backend
+    print_info "Starting backend server on port 5000..."
+    if [ -f "dist/server.js" ]; then
+        sudo -u "$SERVICE_USER" npm start > /var/log/kso/backend.log 2>&1 &
+        BACKEND_PID=$!
+    else
+        sudo -u "$SERVICE_USER" npm run dev > /var/log/kso/backend.log 2>&1 &
+        BACKEND_PID=$!
+    fi
+    
+    # Wait and verify backend started
+    sleep 5
+    for i in {1..30}; do
+        if curl -f http://localhost:5000/api/health > /dev/null 2>&1 || curl -f http://localhost:5000 > /dev/null 2>&1; then
+            print_success "Backend is running on http://localhost:5000"
+            return 0
+        fi
+        sleep 2
+    done
+    
+    print_warning "Backend may not have started properly, check logs: /var/log/kso/backend.log"
+    return 1
+}
+
+################################################################################
+# Start Frontend with Error Recovery
+################################################################################
+
+start_frontend_with_recovery() {
+    print_header "Starting Frontend Server"
+    
+    cd "$APP_DIR/frontend"
+    
+    # Ensure .env exists
+    if [ ! -f ".env" ]; then
+        print_warning ".env file not found, creating default..."
+        if [ -n "$DOMAIN_NAME" ]; then
+            API_URL="https://${DOMAIN_NAME}/api"
+        else
+            API_URL="http://localhost:5000/api"
+        fi
+        cat > .env <<EOF
+NODE_ENV=production
+PORT=3000
+DATABASE_URL=postgresql://${DB_USER}:${DB_PASSWORD}@localhost:5432/${DB_NAME}?schema=public
+JWT_SECRET=${JWT_SECRET}
+NEXT_PUBLIC_API_URL=${API_URL}
+EOF
+    fi
+    
+    # Generate Prisma client if needed
+    if [ -f "prisma/schema.prisma" ]; then
+        print_info "Generating Prisma client..."
+        sudo -u "$SERVICE_USER" npx prisma generate 2>/dev/null || {
+            print_warning "Prisma generate failed, trying as root..."
+            npx prisma generate
+        }
+    fi
+    
+    # Verify port 3000 is free
+    MAX_RETRIES=5
+    RETRY=0
+    while [ $RETRY -lt $MAX_RETRIES ]; do
+        if lsof -Pi :3000 -sTCP:LISTEN -t >/dev/null 2>&1; then
+            print_warning "Port 3000 still in use, retrying cleanup (attempt $((RETRY+1))/$MAX_RETRIES)..."
+            clean_pm2_and_ports
+            RETRY=$((RETRY+1))
+            sleep 2
+        else
+            break
+        fi
+    done
+    
+    # Start frontend
+    print_info "Starting frontend server on port 3000..."
+    if [ -d ".next" ] && [ -f "package.json" ]; then
+        sudo -u "$SERVICE_USER" npm start > /var/log/kso/frontend.log 2>&1 &
+        FRONTEND_PID=$!
+    else
+        sudo -u "$SERVICE_USER" npm run dev > /var/log/kso/frontend.log 2>&1 &
+        FRONTEND_PID=$!
+    fi
+    
+    # Wait and verify frontend started
+    sleep 5
+    for i in {1..30}; do
+        if curl -f http://localhost:3000 > /dev/null 2>&1; then
+            print_success "Frontend is running on http://localhost:3000"
+            return 0
+        fi
+        sleep 2
+    done
+    
+    print_warning "Frontend may not have started properly, check logs: /var/log/kso/frontend.log"
+    return 1
+}
+
+################################################################################
 # Setup PM2
 ################################################################################
 
@@ -1018,8 +1236,8 @@ setup_pm2() {
     
     cd "$APP_DIR"
     
-    # Stop any existing PM2 processes
-    pm2 delete all 2>/dev/null || true
+    # Clean PM2 completely first
+    clean_pm2_and_ports
     
     # Create log directory
     mkdir -p /var/log/kso
@@ -1074,17 +1292,29 @@ EOF
 
     chown "$SERVICE_USER:$SERVICE_USER" ecosystem.config.js
     
-    # Start applications with PM2
-    sudo -u "$SERVICE_USER" pm2 start ecosystem.config.js
-    sudo -u "$SERVICE_USER" pm2 save
+    # Clean everything first
+    clean_pm2_and_ports
+    
+    # Start backend with recovery
+    start_backend_with_recovery
+    
+    # Start frontend with recovery  
+    start_frontend_with_recovery
+    
+    # Now start with PM2 for process management
+    print_info "Starting services with PM2 for process management..."
+    sudo -u "$SERVICE_USER" pm2 start ecosystem.config.js || {
+        print_warning "PM2 start failed, services may be running in background"
+    }
+    sudo -u "$SERVICE_USER" pm2 save 2>/dev/null || true
     
     # Setup PM2 startup script
-    STARTUP_CMD=$(sudo -u "$SERVICE_USER" pm2 startup systemd -u "$SERVICE_USER" --hp "$APP_DIR" | grep "sudo" || echo "")
+    STARTUP_CMD=$(sudo -u "$SERVICE_USER" pm2 startup systemd -u "$SERVICE_USER" --hp "$APP_DIR" 2>/dev/null | grep "sudo" || echo "")
     if [ -n "$STARTUP_CMD" ]; then
-        eval "$STARTUP_CMD"
+        eval "$STARTUP_CMD" 2>/dev/null || true
     fi
     
-    print_success "PM2 processes started"
+    print_success "Services started"
 }
 
 ################################################################################
@@ -1333,9 +1563,16 @@ main() {
     setup_environment
     setup_backend
     setup_frontend
+    clean_pm2_and_ports
     setup_pm2
     setup_nginx_config
     setup_ssl
+    
+    # Start services with error recovery
+    print_header "Starting Application Services"
+    start_backend_with_recovery || print_warning "Backend startup had issues, but continuing..."
+    start_frontend_with_recovery || print_warning "Frontend startup had issues, but continuing..."
+    
     wait_for_services
     
     if [ "$IS_UPDATE" = false ]; then
