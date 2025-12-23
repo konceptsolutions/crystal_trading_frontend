@@ -216,11 +216,11 @@ export default function ModelsSelection() {
       setFilteredParts(partsData);
       
       // Extract unique master part numbers
-      const uniqueMasterPartNumbers = Array.from(
-        new Set(
+      const uniqueMasterPartNumbers: string[] = Array.from(
+        new Set<string>(
           partsData
-            .map(part => part.masterPartNo)
-            .filter((mpn): mpn is string => !!mpn && mpn.trim() !== '')
+            .map((part: Part) => part.masterPartNo)
+            .filter((mpn: string | undefined): mpn is string => !!mpn && mpn.trim() !== '')
         )
       ).sort();
       setMasterPartNumbers(uniqueMasterPartNumbers);
