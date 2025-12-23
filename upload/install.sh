@@ -179,10 +179,34 @@ setup_git_repo() {
             git remote set-url origin "$GIT_REPO_URL" 2>/dev/null || true
         fi
         
-        git fetch origin 2>/dev/null || true
-        git reset --hard origin/$GIT_BRANCH 2>/dev/null || git reset --hard origin/main 2>/dev/null || true
-        git pull origin $GIT_BRANCH 2>/dev/null || git pull origin main 2>/dev/null || true
-        print_success "Code updated from GitHub"
+        # Clean any local changes and ensure we're on the correct branch
+        print_info "Cleaning local changes and fetching latest from GitHub..."
+        git fetch origin --prune 2>/dev/null || true
+        
+        # Determine the correct branch
+        BRANCH_TO_USE="$GIT_BRANCH"
+        if ! git show-ref --verify --quiet refs/remotes/origin/$GIT_BRANCH; then
+            BRANCH_TO_USE="main"
+            print_info "Branch $GIT_BRANCH not found, using main branch"
+        fi
+        
+        # Reset to match remote exactly
+        git reset --hard origin/$BRANCH_TO_USE 2>/dev/null || {
+            print_warning "Failed to reset to origin/$BRANCH_TO_USE, trying main..."
+            git reset --hard origin/main 2>/dev/null || true
+        }
+        
+        # Clean any untracked files that might interfere
+        git clean -fd 2>/dev/null || true
+        
+        # Verify we got the latest
+        CURRENT_COMMIT=$(git rev-parse HEAD 2>/dev/null || echo "")
+        REMOTE_COMMIT=$(git rev-parse origin/$BRANCH_TO_USE 2>/dev/null || git rev-parse origin/main 2>/dev/null || echo "")
+        if [ "$CURRENT_COMMIT" = "$REMOTE_COMMIT" ] && [ -n "$CURRENT_COMMIT" ]; then
+            print_success "Code updated from GitHub (commit: ${CURRENT_COMMIT:0:7})"
+        else
+            print_success "Code updated from GitHub"
+        fi
         return
     fi
     
