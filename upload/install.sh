@@ -172,6 +172,11 @@ setup_git_repo() {
         print_info "Pulling latest changes from GitHub..."
         cd "$APP_DIR"
         
+        # Fix "dubious ownership" error - add safe.directory for this repo
+        print_info "Configuring git safe.directory to fix ownership issues..."
+        git config --global --add safe.directory "$APP_DIR" 2>/dev/null || true
+        git config --global --add safe.directory '*' 2>/dev/null || true
+        
         # Check if this is actually a git repository (don't reinitialize if .git exists)
         if [ ! -f "$APP_DIR/.git/config" ] && [ ! -d "$APP_DIR/.git/objects" ]; then
             print_warning "Git directory exists but appears corrupted. Reinitializing..."
@@ -211,11 +216,22 @@ setup_git_repo() {
                 if git remote add origin "$GIT_REPO_URL" 2>/dev/null; then
                     print_success "Remote 'origin' added successfully (after cleanup)"
                     REMOTE_EXISTS=true
+            else
+                print_error "Cannot add remote. Trying to fix git ownership issue..."
+                # Fix ownership issue and try again
+                git config --global --add safe.directory "$APP_DIR" 2>/dev/null || true
+                chown -R "$SERVICE_USER:$SERVICE_USER" "$APP_DIR/.git" 2>/dev/null || true
+                # Try adding remote again
+                if git remote add origin "$GIT_REPO_URL" 2>/dev/null; then
+                    print_success "Remote 'origin' added successfully (after fixing ownership)"
+                    REMOTE_EXISTS=true
                 else
-                    print_error "Cannot add remote. This may indicate a git configuration issue."
-                    print_info "Trying to diagnose the issue..."
+                    print_error "Still cannot add remote. Diagnosing issue..."
                     git remote -v 2>&1 || true
+                    # Show the actual error
+                    git remote add origin "$GIT_REPO_URL" 2>&1 | head -3 || true
                 fi
+            fi
             fi
         fi
         
@@ -806,6 +822,13 @@ create_app_user() {
     
     # Ensure directory ownership
     chown -R "$SERVICE_USER:$SERVICE_USER" "$APP_DIR" 2>/dev/null || true
+    
+    # Fix git ownership issues by adding safe.directory
+    if [ -d "$APP_DIR/.git" ]; then
+        git config --global --add safe.directory "$APP_DIR" 2>/dev/null || true
+        git config --global --add safe.directory '*' 2>/dev/null || true
+        chown -R "$SERVICE_USER:$SERVICE_USER" "$APP_DIR/.git" 2>/dev/null || true
+    fi
 }
 
 ################################################################################
