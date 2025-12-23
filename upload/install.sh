@@ -1117,14 +1117,14 @@ EOF
     fi
     
     # Verify port 5000 is free
-    MAX_RETRIES=5
+    MAX_RETRIES=3
     RETRY=0
     while [ $RETRY -lt $MAX_RETRIES ]; do
         if lsof -Pi :5000 -sTCP:LISTEN -t >/dev/null 2>&1; then
-            print_warning "Port 5000 still in use, retrying cleanup (attempt $((RETRY+1))/$MAX_RETRIES)..."
-            clean_pm2_and_ports
+            print_warning "Port 5000 still in use, quick cleanup (attempt $((RETRY+1))/$MAX_RETRIES)..."
+            lsof -ti:5000 | xargs kill -9 2>/dev/null || true
             RETRY=$((RETRY+1))
-            sleep 2
+            sleep 1
         else
             break
         fi
@@ -1195,14 +1195,14 @@ EOF
     fi
     
     # Verify port 3000 is free
-    MAX_RETRIES=5
+    MAX_RETRIES=3
     RETRY=0
     while [ $RETRY -lt $MAX_RETRIES ]; do
         if lsof -Pi :3000 -sTCP:LISTEN -t >/dev/null 2>&1; then
-            print_warning "Port 3000 still in use, retrying cleanup (attempt $((RETRY+1))/$MAX_RETRIES)..."
-            clean_pm2_and_ports
+            print_warning "Port 3000 still in use, quick cleanup (attempt $((RETRY+1))/$MAX_RETRIES)..."
+            lsof -ti:3000 | xargs kill -9 2>/dev/null || true
             RETRY=$((RETRY+1))
-            sleep 2
+            sleep 1
         else
             break
         fi
