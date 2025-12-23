@@ -137,7 +137,16 @@ if lsof -Pi :5000 -sTCP:LISTEN -t >/dev/null 2>&1 || netstat -tuln 2>/dev/null |
         if [ -n "$PIDS" ]; then
             print_info "Found processes using port 5000: $PIDS"
             for pid in $PIDS; do
+                print_info "Killing process $pid..."
                 kill -9 $pid 2>/dev/null || true
+                # Wait a moment for process to die
+                sleep 1
+                # Verify it's dead
+                if ps -p $pid > /dev/null 2>&1; then
+                    print_warning "Process $pid still running, trying harder..."
+                    kill -9 $pid 2>/dev/null || true
+                    sleep 1
+                fi
             done
         fi
     fi
