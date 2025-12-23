@@ -172,11 +172,30 @@ setup_git_repo() {
         print_info "Pulling latest changes from GitHub..."
         cd "$APP_DIR"
         
-        # Update remote URL if it changed
-        CURRENT_REMOTE=$(git remote get-url origin 2>/dev/null || echo "")
-        if [ "$CURRENT_REMOTE" != "$GIT_REPO_URL" ]; then
-            print_info "Updating remote URL to $GIT_REPO_URL"
-            git remote set-url origin "$GIT_REPO_URL" 2>/dev/null || true
+        # Check if remote exists, if not add it
+        if ! git remote get-url origin > /dev/null 2>&1; then
+            print_info "Remote 'origin' not found, adding it..."
+            git remote add origin "$GIT_REPO_URL" 2>/dev/null || {
+                print_warning "Failed to add remote, trying to set URL..."
+                git remote set-url origin "$GIT_REPO_URL" 2>/dev/null || true
+            }
+        else
+            # Update remote URL if it changed
+            CURRENT_REMOTE=$(git remote get-url origin 2>/dev/null || echo "")
+            if [ "$CURRENT_REMOTE" != "$GIT_REPO_URL" ]; then
+                print_info "Updating remote URL to $GIT_REPO_URL"
+                git remote set-url origin "$GIT_REPO_URL" 2>/dev/null || true
+            fi
+        fi
+        
+        # Verify remote is accessible
+        print_info "Verifying remote repository is accessible..."
+        if ! git ls-remote origin HEAD > /dev/null 2>&1; then
+            print_error "Cannot access remote repository. Please check:"
+            print_error "  1. Internet connection"
+            print_error "  2. Repository URL: $GIT_REPO_URL"
+            print_error "  3. Repository access permissions"
+            print_warning "Continuing with local code, but updates may not be applied"
         fi
         
         # Stash or discard any local changes first
@@ -186,10 +205,20 @@ setup_git_repo() {
         
         # Clean any local changes and ensure we're on the correct branch
         print_info "Fetching latest from GitHub..."
-        git fetch origin --prune --force 2>/dev/null || {
-            print_warning "Fetch failed, trying without prune..."
-            git fetch origin --force 2>/dev/null || true
-        }
+        if git fetch origin --prune --force 2>/dev/null; then
+            print_success "Fetch successful"
+        elif git fetch origin --force 2>/dev/null; then
+            print_success "Fetch successful (without prune)"
+        else
+            print_warning "Fetch failed, checking remote configuration..."
+            # Try to re-add remote if fetch fails
+            git remote remove origin 2>/dev/null || true
+            git remote add origin "$GIT_REPO_URL" 2>/dev/null || true
+            git fetch origin --force 2>/dev/null || {
+                print_error "Unable to fetch from GitHub. Using local code."
+                print_error "Please check your internet connection and repository access."
+            }
+        fi
         
         # Determine the correct branch
         BRANCH_TO_USE="$GIT_BRANCH"
@@ -227,25 +256,41 @@ setup_git_repo() {
         
         # Final verification - ensure we have the latest
         print_info "Verifying latest code is pulled..."
-        REMOTE_COMMIT=$(git ls-remote origin "$BRANCH_TO_USE" | cut -f1 2>/dev/null || echo "")
-        LOCAL_COMMIT=$(git rev-parse HEAD 2>/dev/null || echo "")
-        if [ -n "$REMOTE_COMMIT" ] && [ "$REMOTE_COMMIT" != "$LOCAL_COMMIT" ]; then
-            print_warning "Local commit differs from remote, forcing update..."
-            git fetch origin "$BRANCH_TO_USE" --force 2>/dev/null || true
-            git reset --hard "origin/$BRANCH_TO_USE" 2>/dev/null || true
+        if git ls-remote origin "$BRANCH_TO_USE" > /dev/null 2>&1; then
+            REMOTE_COMMIT=$(git ls-remote origin "$BRANCH_TO_USE" | cut -f1 2>/dev/null || echo "")
             LOCAL_COMMIT=$(git rev-parse HEAD 2>/dev/null || echo "")
+            if [ -n "$REMOTE_COMMIT" ] && [ "$REMOTE_COMMIT" != "$LOCAL_COMMIT" ]; then
+                print_warning "Local commit differs from remote, forcing update..."
+                git fetch origin "$BRANCH_TO_USE" --force 2>/dev/null || true
+                git reset --hard "origin/$BRANCH_TO_USE" 2>/dev/null || true
+                LOCAL_COMMIT=$(git rev-parse HEAD 2>/dev/null || echo "")
+            fi
+        else
+            print_warning "Cannot verify remote commit - remote may not be accessible"
         fi
         
         # Verify we got the latest
         CURRENT_COMMIT=$(git rev-parse HEAD 2>/dev/null || echo "")
-        REMOTE_COMMIT=$(git rev-parse "origin/$BRANCH_TO_USE" 2>/dev/null || git rev-parse origin/main 2>/dev/null || echo "")
-        if [ "$CURRENT_COMMIT" = "$REMOTE_COMMIT" ] && [ -n "$CURRENT_COMMIT" ]; then
-            print_success "Code updated from GitHub (commit: ${CURRENT_COMMIT:0:7})"
+        if git show-ref --verify --quiet "refs/remotes/origin/$BRANCH_TO_USE" 2>/dev/null; then
+            REMOTE_COMMIT=$(git rev-parse "origin/$BRANCH_TO_USE" 2>/dev/null || echo "")
+            if [ "$CURRENT_COMMIT" = "$REMOTE_COMMIT" ] && [ -n "$CURRENT_COMMIT" ]; then
+                print_success "Code updated from GitHub (commit: ${CURRENT_COMMIT:0:7})"
+            else
+                print_warning "Local commit (${CURRENT_COMMIT:0:7}) differs from remote (${REMOTE_COMMIT:0:7})"
+                print_info "Forcing reset to remote..."
+                if git reset --hard "origin/$BRANCH_TO_USE" 2>/dev/null; then
+                    print_success "Code updated from GitHub"
+                elif git reset --hard origin/main 2>/dev/null; then
+                    print_success "Code updated from GitHub (using main branch)"
+                else
+                    print_warning "Could not reset to remote, using local code"
+                fi
+            fi
         else
-            print_warning "Local commit (${CURRENT_COMMIT:0:7}) differs from remote (${REMOTE_COMMIT:0:7})"
-            print_info "Forcing reset to remote..."
-            git reset --hard "origin/$BRANCH_TO_USE" 2>/dev/null || git reset --hard origin/main 2>/dev/null || true
-            print_success "Code updated from GitHub"
+            print_warning "Remote branch reference not found, using local code"
+            if [ -n "$CURRENT_COMMIT" ]; then
+                print_info "Current local commit: ${CURRENT_COMMIT:0:7}"
+            fi
         fi
         
         # Verify critical file has the fix
