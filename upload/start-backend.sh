@@ -129,6 +129,24 @@ fi
 # Check if port 5000 is already in use and kill it
 if lsof -Pi :5000 -sTCP:LISTEN -t >/dev/null 2>&1 || netstat -tuln 2>/dev/null | grep -q ":5000 " || ss -tuln 2>/dev/null | grep -q ":5000 "; then
     print_warning "Port 5000 is already in use"
+    print_info "Stopping any PM2 or systemd services that might be managing the backend..."
+    
+    # Stop PM2 processes first (they auto-restart)
+    if command -v pm2 &> /dev/null; then
+        print_info "Stopping PM2 processes..."
+        pm2 stop all 2>/dev/null || true
+        pm2 delete all 2>/dev/null || true
+        sleep 2
+    fi
+    
+    # Stop systemd service if it exists
+    if systemctl is-active --quiet kso-backend 2>/dev/null || systemctl is-active --quiet kso 2>/dev/null; then
+        print_info "Stopping systemd service..."
+        systemctl stop kso-backend 2>/dev/null || true
+        systemctl stop kso 2>/dev/null || true
+        sleep 2
+    fi
+    
     print_info "Attempting to free port 5000..."
     
     # Method 1: Try lsof
