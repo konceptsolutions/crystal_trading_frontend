@@ -208,6 +208,12 @@ setup_git_repo() {
             }
         fi
         
+        # Pull latest changes explicitly
+        print_info "Pulling latest changes from GitHub..."
+        git pull origin "$BRANCH_TO_USE" --force --no-edit 2>/dev/null || {
+            print_warning "Pull failed, trying reset method..."
+        }
+        
         # Reset to match remote exactly - be very aggressive
         print_info "Resetting to match GitHub exactly..."
         git reset --hard "origin/$BRANCH_TO_USE" 2>/dev/null || {
@@ -218,6 +224,17 @@ setup_git_repo() {
         
         # Clean any untracked files that might interfere
         git clean -fdx 2>/dev/null || true
+        
+        # Final verification - ensure we have the latest
+        print_info "Verifying latest code is pulled..."
+        REMOTE_COMMIT=$(git ls-remote origin "$BRANCH_TO_USE" | cut -f1 2>/dev/null || echo "")
+        LOCAL_COMMIT=$(git rev-parse HEAD 2>/dev/null || echo "")
+        if [ -n "$REMOTE_COMMIT" ] && [ "$REMOTE_COMMIT" != "$LOCAL_COMMIT" ]; then
+            print_warning "Local commit differs from remote, forcing update..."
+            git fetch origin "$BRANCH_TO_USE" --force 2>/dev/null || true
+            git reset --hard "origin/$BRANCH_TO_USE" 2>/dev/null || true
+            LOCAL_COMMIT=$(git rev-parse HEAD 2>/dev/null || echo "")
+        fi
         
         # Verify we got the latest
         CURRENT_COMMIT=$(git rev-parse HEAD 2>/dev/null || echo "")
