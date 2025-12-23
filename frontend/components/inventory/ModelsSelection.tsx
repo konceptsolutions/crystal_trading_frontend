@@ -31,6 +31,9 @@ export default function ModelsSelection() {
   const [partsSearch, setPartsSearch] = useState('');
   const [filteredParts, setFilteredParts] = useState<Part[]>([]);
   const [showPartsDropdown, setShowPartsDropdown] = useState(false);
+  const [masterPartNumbers, setMasterPartNumbers] = useState<string[]>([]);
+  const [filteredMasterPartNumbers, setFilteredMasterPartNumbers] = useState<string[]>([]);
+  const [showMasterPartDropdown, setShowMasterPartDropdown] = useState(false);
   const [models, setModels] = useState<Model[]>([]);
   const [modelsLoading, setModelsLoading] = useState(false);
   const [editingModelId, setEditingModelId] = useState<string | null>(null);
@@ -40,6 +43,8 @@ export default function ModelsSelection() {
   const [deleting, setDeleting] = useState<string | null>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const masterPartDropdownRef = useRef<HTMLDivElement>(null);
+  const masterPartInputRef = useRef<HTMLInputElement>(null);
 
   // Load all parts
   useEffect(() => {
@@ -98,29 +103,28 @@ export default function ModelsSelection() {
       filtered = filtered.filter(part => 
         part.masterPartNo?.toLowerCase() === modelNumber.trim().toLowerCase()
       );
-    } else {
-      // If no master part number, show no parts
-      filtered = [];
     }
+    // If no master part number, show all parts (for searching)
 
     // Then filter by search text if provided
     if (partsSearch.trim() !== '') {
       filtered = filtered.filter(part =>
         part.partNo.toLowerCase().includes(partsSearch.toLowerCase()) ||
         part.description?.toLowerCase().includes(partsSearch.toLowerCase()) ||
-        part.brand?.toLowerCase().includes(partsSearch.toLowerCase())
+        part.brand?.toLowerCase().includes(partsSearch.toLowerCase()) ||
+        part.masterPartNo?.toLowerCase().includes(partsSearch.toLowerCase())
       );
     }
 
     setFilteredParts(filtered);
 
-    // Auto-show dropdown when master part number is entered and there are matching parts
-    if (modelNumber.trim() !== '' && filtered.length > 0 && !selectedPartId) {
+    // Auto-show dropdown when there are matching parts and user is typing or focused, but not when a part is selected
+    if (!selectedPartId && filtered.length > 0 && (partsSearch.trim() !== '' || showPartsDropdown)) {
       setShowPartsDropdown(true);
-    } else if (modelNumber.trim() === '') {
+    } else if (selectedPartId) {
       setShowPartsDropdown(false);
     }
-  }, [modelNumber, partsSearch, parts, selectedPartId]);
+  }, [modelNumber, partsSearch, parts, selectedPartId, showPartsDropdown]);
 
   // Load models when part is selected
   useEffect(() => {
@@ -157,10 +161,24 @@ export default function ModelsSelection() {
     }
   }, [modelNumber, selectedPartId, parts]);
 
-  // Close dropdown when clicking outside
+  // Filter master part numbers based on search
+  useEffect(() => {
+    if (modelNumber.trim() !== '') {
+      const filtered = masterPartNumbers.filter(mpn =>
+        mpn.toLowerCase().includes(modelNumber.toLowerCase())
+      );
+      setFilteredMasterPartNumbers(filtered);
+    } else {
+      setFilteredMasterPartNumbers(masterPartNumbers);
+    }
+  }, [modelNumber, masterPartNumbers]);
+
+  // Close dropdowns when clicking outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       const target = event.target as Node;
+      
+      // Close parts dropdown
       if (
         dropdownRef.current &&
         !dropdownRef.current.contains(target) &&
@@ -169,15 +187,25 @@ export default function ModelsSelection() {
       ) {
         setShowPartsDropdown(false);
       }
+      
+      // Close master part number dropdown
+      if (
+        masterPartDropdownRef.current &&
+        !masterPartDropdownRef.current.contains(target) &&
+        masterPartInputRef.current &&
+        !masterPartInputRef.current.parentElement?.contains(target)
+      ) {
+        setShowMasterPartDropdown(false);
+      }
     };
 
-    if (showPartsDropdown) {
+    if (showPartsDropdown || showMasterPartDropdown) {
       document.addEventListener('mousedown', handleClickOutside);
       return () => {
         document.removeEventListener('mousedown', handleClickOutside);
       };
     }
-  }, [showPartsDropdown]);
+  }, [showPartsDropdown, showMasterPartDropdown]);
 
   const loadParts = async () => {
     setPartsLoading(true);
@@ -186,10 +214,23 @@ export default function ModelsSelection() {
       const partsData = response.data.parts || [];
       setParts(partsData);
       setFilteredParts(partsData);
+      
+      // Extract unique master part numbers
+      const uniqueMasterPartNumbers = Array.from(
+        new Set(
+          partsData
+            .map(part => part.masterPartNo)
+            .filter((mpn): mpn is string => !!mpn && mpn.trim() !== '')
+        )
+      ).sort();
+      setMasterPartNumbers(uniqueMasterPartNumbers);
+      setFilteredMasterPartNumbers(uniqueMasterPartNumbers);
     } catch (error) {
       console.error('Failed to load parts:', error);
       setParts([]);
       setFilteredParts([]);
+      setMasterPartNumbers([]);
+      setFilteredMasterPartNumbers([]);
     } finally {
       setPartsLoading(false);
     }
@@ -197,9 +238,13 @@ export default function ModelsSelection() {
 
   const handlePartSelect = (part: Part) => {
     setSelectedPartId(part.id);
-    setPartsSearch(`${part.partNo}${part.description ? ` - ${part.description}` : ''}`);
+    setPartsSearch(part.partNo);
     setShowPartsDropdown(false);
     setEditingModelId(null);
+    // If master part number is empty, set it from the selected part
+    if (!modelNumber.trim() && part.masterPartNo) {
+      setModelNumber(part.masterPartNo);
+    }
   };
 
   const handleEdit = (model: Model) => {
@@ -277,25 +322,83 @@ export default function ModelsSelection() {
         <CardContent className="p-6">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             {/* Model Number Field */}
-            <div className="space-y-2">
+            <div className="space-y-2 relative">
               <Label htmlFor="modelNumber" className="text-sm font-semibold text-gray-700">
                 Master Part Number
               </Label>
-              <Input
-                id="modelNumber"
-                value={modelNumber}
-                onChange={(e) => {
-                  setModelNumber(e.target.value);
-                  // Clear selected part when master part number changes
-                  if (selectedPartId) {
-                    setSelectedPartId('');
-                    setPartsSearch('');
-                    setModels([]);
+              <div className="relative">
+                <Input
+                  ref={masterPartInputRef}
+                  id="modelNumber"
+                  value={modelNumber}
+                  onChange={(e) => {
+                    setModelNumber(e.target.value);
+                    setShowMasterPartDropdown(true);
+                    // Clear selected part when master part number changes
+                    if (selectedPartId) {
+                      setSelectedPartId('');
+                      setPartsSearch('');
+                      setModels([]);
+                    }
+                  }}
+                  onFocus={() => {
+                    // Show all master part numbers when focused
+                    if (filteredMasterPartNumbers.length > 0) {
+                      setShowMasterPartDropdown(true);
+                    } else if (masterPartNumbers.length > 0) {
+                      setFilteredMasterPartNumbers(masterPartNumbers);
+                      setShowMasterPartDropdown(true);
+                    }
+                  }}
+                  placeholder="Search master part number..."
+                  className="border-gray-300 focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20 h-11"
+                  leftIcon={
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                    </svg>
                   }
-                }}
-                placeholder="Enter master part number"
-                className="border-gray-300 focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20 h-11"
-              />
+                />
+                {showMasterPartDropdown && filteredMasterPartNumbers.length > 0 && (
+                  <div
+                    ref={masterPartDropdownRef}
+                    className="absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-60 overflow-y-auto"
+                  >
+                    {filteredMasterPartNumbers.slice(0, 100).map((mpn) => (
+                      <div
+                        key={mpn}
+                        onClick={() => {
+                          setModelNumber(mpn);
+                          setShowMasterPartDropdown(false);
+                          // Clear selected part when master part number changes
+                          if (selectedPartId) {
+                            setSelectedPartId('');
+                            setPartsSearch('');
+                            setModels([]);
+                          }
+                        }}
+                        className="px-4 py-2 hover:bg-primary-50 cursor-pointer border-b border-gray-100 last:border-b-0"
+                      >
+                        <div className="font-medium text-gray-900">{mpn}</div>
+                      </div>
+                    ))}
+                    {filteredMasterPartNumbers.length > 100 && (
+                      <div className="px-4 py-2 text-xs text-gray-500 text-center border-t border-gray-200">
+                        Showing first 100 results. Type to filter further.
+                      </div>
+                    )}
+                  </div>
+                )}
+                {showMasterPartDropdown && filteredMasterPartNumbers.length === 0 && modelNumber.trim() !== '' && (
+                  <div
+                    ref={masterPartDropdownRef}
+                    className="absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg"
+                  >
+                    <div className="px-4 py-3 text-sm text-gray-500 text-center">
+                      No master part numbers found matching "{modelNumber}"
+                    </div>
+                  </div>
+                )}
+              </div>
               {modelNumber.trim() !== '' && (
                 <p className="text-xs text-gray-500 mt-1">
                   Only parts with this master part number will be shown
@@ -315,47 +418,78 @@ export default function ModelsSelection() {
                   value={partsSearch}
                   onChange={(e) => {
                     setPartsSearch(e.target.value);
-                    if (modelNumber.trim() !== '' && filteredParts.length > 0) {
+                    if (!selectedPartId) {
                       setShowPartsDropdown(true);
                     }
                     if (!e.target.value) {
                       setSelectedPartId('');
+                      setShowPartsDropdown(false);
                     }
                   }}
                   onFocus={() => {
-                    if (modelNumber.trim() !== '' && filteredParts.length > 0) {
-                      setShowPartsDropdown(true);
+                    // Only show dropdown if no part is selected
+                    if (!selectedPartId) {
+                      // Show all parts or filtered parts when focused
+                      if (filteredParts.length > 0) {
+                        setShowPartsDropdown(true);
+                      } else if (parts.length > 0) {
+                        // If no filtered parts but we have parts, show all
+                        setFilteredParts(parts);
+                        setShowPartsDropdown(true);
+                      }
                     }
                   }}
-                  placeholder={modelNumber.trim() === '' ? "Enter master part number first" : "Search and select part..."}
+                  placeholder="Search by part number, description, or brand..."
                   className="border-gray-300 focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20 h-11"
-                  disabled={modelNumber.trim() === ''}
                   leftIcon={
                     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z" />
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
                     </svg>
                   }
                 />
-                {modelNumber.trim() !== '' && showPartsDropdown && filteredParts.length > 0 && (
+                {showPartsDropdown && filteredParts.length > 0 && !selectedPartId && (
                   <div
                     ref={dropdownRef}
                     className="absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-60 overflow-y-auto"
                   >
-                    {filteredParts.slice(0, 50).map((part) => (
+                    {filteredParts.slice(0, 100).map((part) => (
                       <div
                         key={part.id}
-                        onClick={() => handlePartSelect(part)}
+                        onClick={() => {
+                          handlePartSelect(part);
+                          setShowPartsDropdown(false);
+                        }}
                         className="px-4 py-2 hover:bg-primary-50 cursor-pointer border-b border-gray-100 last:border-b-0"
                       >
                         <div className="font-medium text-gray-900">{part.partNo}</div>
                         {part.description && (
                           <div className="text-sm text-gray-500 truncate">{part.description}</div>
                         )}
-                        {part.brand && (
-                          <div className="text-xs text-gray-400">Brand: {part.brand}</div>
-                        )}
+                        <div className="flex items-center gap-2 mt-1">
+                          {part.brand && (
+                            <div className="text-xs text-gray-400">Brand: {part.brand}</div>
+                          )}
+                          {part.masterPartNo && (
+                            <div className="text-xs text-gray-400">Master: {part.masterPartNo}</div>
+                          )}
+                        </div>
                       </div>
                     ))}
+                    {filteredParts.length > 100 && (
+                      <div className="px-4 py-2 text-xs text-gray-500 text-center border-t border-gray-200">
+                        Showing first 100 results. Type to filter further.
+                      </div>
+                    )}
+                  </div>
+                )}
+                {showPartsDropdown && filteredParts.length === 0 && partsSearch.trim() !== '' && (
+                  <div
+                    ref={dropdownRef}
+                    className="absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg"
+                  >
+                    <div className="px-4 py-3 text-sm text-gray-500 text-center">
+                      No parts found matching "{partsSearch}"
+                    </div>
                   </div>
                 )}
               </div>

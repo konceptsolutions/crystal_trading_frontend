@@ -98,7 +98,7 @@ export default function DashboardLayout({
 
   // Re-measure header when navigating to categories page
   useEffect(() => {
-    if (pathname === '/dashboard/categories' || pathname.startsWith('/dashboard/categories/')) {
+    if (pathname === '/dashboard/attributes' || pathname.startsWith('/dashboard/attributes/')) {
       const measureHeader = () => {
         if (headerRef.current) {
           const rect = headerRef.current.getBoundingClientRect();
@@ -149,14 +149,10 @@ export default function DashboardLayout({
     pathname.startsWith('/dashboard/parts/') ||
     pathname === '/dashboard/parts-list' ||
     pathname.startsWith('/dashboard/parts-list/') ||
-    pathname === '/dashboard/categories' ||
-    pathname.startsWith('/dashboard/categories/') ||
-    pathname === '/dashboard/subcategories' ||
-    pathname.startsWith('/dashboard/subcategories/') ||
+    pathname === '/dashboard/attributes' ||
+    pathname.startsWith('/dashboard/attributes/') ||
     pathname === '/dashboard/models' ||
-    pathname.startsWith('/dashboard/models/') ||
-    pathname === '/dashboard/brands' ||
-    pathname.startsWith('/dashboard/brands/');
+    pathname.startsWith('/dashboard/models/');
   
   const partsTabs = [
     { label: 'Parts Entry', path: '/dashboard/parts', icon: (
@@ -169,12 +165,7 @@ export default function DashboardLayout({
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z" />
       </svg>
     )},
-    { label: 'Category', path: '/dashboard/categories', icon: (
-      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
-      </svg>
-    )},
-    { label: 'Subcategory', path: '/dashboard/subcategories', icon: (
+    { label: 'Attributes', path: '/dashboard/attributes', icon: (
       <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
       </svg>
@@ -182,11 +173,6 @@ export default function DashboardLayout({
     { label: 'Models', path: '/dashboard/models', icon: (
       <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-      </svg>
-    )},
-    { label: 'Brands', path: '/dashboard/brands', icon: (
-      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
       </svg>
     )},
   ];

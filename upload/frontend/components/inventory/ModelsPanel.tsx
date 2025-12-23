@@ -238,6 +238,7 @@ export default function ModelsPanel({
                 <TableRow className="border-b border-gray-200">
                   <TableHead className="h-8 px-2 text-xs font-semibold text-gray-700">Model</TableHead>
                   <TableHead className="h-8 px-2 text-xs font-semibold text-gray-700 text-right">Qty. Used</TableHead>
+                  <TableHead className="h-8 px-2 text-xs font-semibold text-gray-700 text-center w-12">Action</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -247,15 +248,15 @@ export default function ModelsPanel({
                     const rowKey = model.id && model.id.trim().length > 0 ? model.id : `new-${index}`;
                     return (
                       <TableRow key={rowKey} className="border-b border-gray-100 hover:bg-gray-50">
-                        <TableCell className="px-2 py-1.5">
+                        <TableCell className="px-0.5 py-0.5">
                           <Input
                             value={model.modelNo || ''}
                             onChange={(e) => updateModel(index, 'modelNo', e.target.value)}
                             placeholder="Enter model number"
-                            className="h-7 text-xs border-gray-200 focus:border-primary-400"
+                            className="h-7 text-xs border-gray-200 focus:border-primary-400 px-1.5 py-0.5"
                           />
                         </TableCell>
-                        <TableCell className="px-2 py-1.5">
+                        <TableCell className="px-0.5 py-0.5">
                           <div className="flex items-center justify-end gap-1">
                             <Input
                               type="number"
@@ -265,17 +266,32 @@ export default function ModelsPanel({
                                 const value = e.target.value;
                                 updateModel(index, 'qtyUsed', value === '' ? undefined : parseInt(value) || undefined);
                               }}
-                              className="h-7 w-16 text-xs text-right border-gray-200 focus:border-primary-400 [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none [-moz-appearance:textfield]"
+                              className="h-7 w-16 text-xs text-right border-gray-200 focus:border-primary-400 px-1.5 py-0.5 [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none [-moz-appearance:textfield]"
                               placeholder=""
                             />
                           </div>
+                        </TableCell>
+                        <TableCell className="px-0.5 py-0.5 text-center">
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => removeModel(index)}
+                            className="h-7 w-7 p-0 bg-white border-2 border-red-500 hover:bg-red-50 hover:border-red-600 active:bg-red-100 inline-flex items-center justify-center rounded-md transition-colors"
+                            title={models.length > 1 ? 'Remove row' : 'Clear row'}
+                          >
+                            <svg className="w-6 h-6" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ minWidth: '20px', minHeight: '20px' }}>
+                              <line x1="6" y1="6" x2="18" y2="18" stroke="#DC2626" strokeWidth="3.5" strokeLinecap="round"/>
+                              <line x1="18" y1="6" x2="6" y2="18" stroke="#DC2626" strokeWidth="3.5" strokeLinecap="round"/>
+                            </svg>
+                          </Button>
                         </TableCell>
                       </TableRow>
                     );
                   })
                 ) : (
                   <TableRow>
-                    <TableCell colSpan={2} className="px-2 py-4 text-center text-gray-500 text-xs">
+                    <TableCell colSpan={3} className="px-2 py-4 text-center text-gray-500 text-xs">
                       No models added yet. Enter a model number above.
                     </TableCell>
                   </TableRow>
