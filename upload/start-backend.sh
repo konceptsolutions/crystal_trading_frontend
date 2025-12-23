@@ -149,20 +149,26 @@ if lsof -Pi :5000 -sTCP:LISTEN -t >/dev/null 2>&1 || netstat -tuln 2>/dev/null |
     
     print_info "Attempting to free port 5000..."
     
-    # Method 1: Try lsof
+    # Method 1: Try lsof - kill as root to ensure we can kill any user's process
     if command -v lsof &> /dev/null; then
         PIDS=$(lsof -ti:5000 2>/dev/null || echo "")
         if [ -n "$PIDS" ]; then
             print_info "Found processes using port 5000: $PIDS"
             for pid in $PIDS; do
-                print_info "Killing process $pid..."
-                kill -9 $pid 2>/dev/null || true
-                # Wait a moment for process to die
+                print_info "Killing process $pid (may be owned by different user)..."
+                # Try normal kill first
+                kill $pid 2>/dev/null || true
                 sleep 1
-                # Verify it's dead
+                # If still running, force kill
                 if ps -p $pid > /dev/null 2>&1; then
-                    print_warning "Process $pid still running, trying harder..."
+                    print_info "Force killing process $pid..."
                     kill -9 $pid 2>/dev/null || true
+                    sleep 1
+                fi
+                # Final check - if still running, try as root
+                if ps -p $pid > /dev/null 2>&1; then
+                    print_warning "Process $pid still running, trying sudo kill..."
+                    sudo kill -9 $pid 2>/dev/null || true
                     sleep 1
                 fi
             done
