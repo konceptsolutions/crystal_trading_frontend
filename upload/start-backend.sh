@@ -126,18 +126,43 @@ else
     fi
 fi
 
-# Check if port 5000 is already in use
+# Check if port 5000 is already in use and kill it
 if lsof -Pi :5000 -sTCP:LISTEN -t >/dev/null 2>&1 ; then
     print_warning "Port 5000 is already in use"
-    read -p "Do you want to kill the process using port 5000? (y/n): " KILL_PORT
-    if [ "$KILL_PORT" = "y" ]; then
-        print_info "Killing process on port 5000..."
-        lsof -ti:5000 | xargs kill -9 2>/dev/null || true
+    print_info "Killing process on port 5000..."
+    
+    # Try multiple methods to kill the process
+    PID=$(lsof -ti:5000 2>/dev/null || echo "")
+    if [ -n "$PID" ]; then
+        kill -9 $PID 2>/dev/null || true
+    fi
+    
+    # Also try with fuser if available
+    if command -v fuser &> /dev/null; then
+        fuser -k 5000/tcp 2>/dev/null || true
+    fi
+    
+    # Wait a bit and check again
+    sleep 3
+    
+    # Verify port is free
+    if lsof -Pi :5000 -sTCP:LISTEN -t >/dev/null 2>&1 ; then
+        print_warning "Port 5000 is still in use. Trying more aggressive kill..."
+        # Get all PIDs using port 5000
+        PIDS=$(lsof -ti:5000 2>/dev/null || echo "")
+        for pid in $PIDS; do
+            kill -9 $pid 2>/dev/null || true
+        done
         sleep 2
-        print_success "Port 5000 is now free"
-    else
-        print_error "Cannot start backend. Port 5000 is in use."
+    fi
+    
+    # Final check
+    if lsof -Pi :5000 -sTCP:LISTEN -t >/dev/null 2>&1 ; then
+        print_error "Cannot free port 5000. Please manually kill the process:"
+        print_info "Run: lsof -ti:5000 | xargs kill -9"
         exit 1
+    else
+        print_success "Port 5000 is now free"
     fi
 fi
 
