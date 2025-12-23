@@ -30,13 +30,38 @@ print_warning() {
 
 # Get the directory where the script is located
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
-BACKEND_DIR="$SCRIPT_DIR/backend"
+
+# If script is in upload folder, go up one level to find backend
+if [[ "$SCRIPT_DIR" == *"/upload" ]]; then
+    PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
+    BACKEND_DIR="$PROJECT_ROOT/backend"
+else
+    BACKEND_DIR="$SCRIPT_DIR/backend"
+fi
 
 # Check if backend directory exists
 if [ ! -d "$BACKEND_DIR" ]; then
     print_error "Backend directory not found at: $BACKEND_DIR"
-    exit 1
+    print_info "Script location: $SCRIPT_DIR"
+    print_info "Trying common locations..."
+    
+    # Try common locations
+    if [ -d "/opt/kso/backend" ]; then
+        BACKEND_DIR="/opt/kso/backend"
+        print_info "Found backend at: $BACKEND_DIR"
+    elif [ -d "/var/www/nextapp/backend" ]; then
+        BACKEND_DIR="/var/www/nextapp/backend"
+        print_info "Found backend at: $BACKEND_DIR"
+    elif [ -d "$(pwd)/backend" ]; then
+        BACKEND_DIR="$(pwd)/backend"
+        print_info "Found backend at: $BACKEND_DIR"
+    else
+        print_error "Backend directory not found. Please specify the correct path."
+        exit 1
+    fi
 fi
+
+print_info "Using backend directory: $BACKEND_DIR"
 
 cd "$BACKEND_DIR"
 
