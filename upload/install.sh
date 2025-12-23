@@ -1604,6 +1604,39 @@ main() {
     print_info "  Frontend: $APP_DIR/frontend/.env"
     echo ""
     print_success "To update in the future, just run: sudo bash install.sh"
+    
+    # Start continuous monitoring and error recovery (optional - runs in background)
+    print_header "Continuous Error Recovery Monitor"
+    print_info "Starting background monitor for automatic error recovery..."
+    print_info "The system will automatically recover from errors even if offline"
+    echo ""
+    
+    # Run monitoring in background
+    (
+        while true; do
+            sleep 60  # Check every 60 seconds
+            
+            # Check backend health
+            if ! curl -f http://localhost:5000/api/health > /dev/null 2>&1 && ! curl -f http://localhost:5000 > /dev/null 2>&1; then
+                echo "[$(date '+%Y-%m-%d %H:%M:%S')] Backend not responding, attempting recovery..." >> /var/log/kso/recovery.log
+                clean_pm2_and_ports >> /var/log/kso/recovery.log 2>&1
+                start_backend_with_recovery >> /var/log/kso/recovery.log 2>&1
+            fi
+            
+            # Check frontend health
+            if ! curl -f http://localhost:3000 > /dev/null 2>&1; then
+                echo "[$(date '+%Y-%m-%d %H:%M:%S')] Frontend not responding, attempting recovery..." >> /var/log/kso/recovery.log
+                clean_pm2_and_ports >> /var/log/kso/recovery.log 2>&1
+                start_frontend_with_recovery >> /var/log/kso/recovery.log 2>&1
+            fi
+        done
+    ) &
+    
+    MONITOR_PID=$!
+    echo $MONITOR_PID > /var/run/kso-monitor.pid
+    print_success "Error recovery monitor started (PID: $MONITOR_PID)"
+    print_info "Monitor logs: /var/log/kso/recovery.log"
+    print_info "To stop monitor: kill \$(cat /var/run/kso-monitor.pid)"
 }
 
 # Run main
