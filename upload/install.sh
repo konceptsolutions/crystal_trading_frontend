@@ -1071,8 +1071,8 @@ clean_pm2_and_ports() {
     print_info "Killing node processes for kso user..."
     pkill -9 -u kso node 2>/dev/null || true
     
-    # Wait for ports to be free
-    sleep 3
+    # Wait for ports to be free (reduced wait time)
+    sleep 1
     
     print_success "PM2 and ports cleaned"
 }
@@ -1142,10 +1142,10 @@ EOF
         print_info "Backend starting in background (PID: $BACKEND_PID)"
     fi
     
-    # Wait and verify backend started (with timeout)
-    print_info "Waiting for backend to start (max 30 seconds)..."
-    sleep 3
-    for i in {1..15}; do
+    # Wait and verify backend started (with timeout - reduced time)
+    print_info "Waiting for backend to start (max 20 seconds)..."
+    sleep 2
+    for i in {1..10}; do
         if timeout 2 curl -f http://localhost:5000/api/health > /dev/null 2>&1 || timeout 2 curl -f http://localhost:5000 > /dev/null 2>&1; then
             print_success "Backend is running on http://localhost:5000"
             return 0
@@ -1220,10 +1220,10 @@ EOF
         print_info "Frontend starting in background (PID: $FRONTEND_PID)"
     fi
     
-    # Wait and verify frontend started (with timeout)
-    print_info "Waiting for frontend to start (max 60 seconds)..."
-    sleep 5
-    for i in {1..30}; do
+    # Wait and verify frontend started (with timeout - reduced time)
+    print_info "Waiting for frontend to start (max 30 seconds)..."
+    sleep 3
+    for i in {1..15}; do
         if timeout 2 curl -f http://localhost:3000 > /dev/null 2>&1; then
             print_success "Frontend is running on http://localhost:3000"
             return 0
@@ -1504,12 +1504,12 @@ setup_ssl() {
 wait_for_services() {
     print_header "Waiting for Services to Start"
     
-    print_info "Checking services (will timeout after 60 seconds)..."
-    sleep 3
+    print_info "Checking services (quick check, max 20 seconds)..."
+    sleep 2
     
-    # Check backend (with timeout)
+    # Check backend (with timeout - quick check)
     BACKEND_READY=false
-    for i in {1..30}; do
+    for i in {1..10}; do
         if timeout 2 curl -f http://localhost:5000/api/health > /dev/null 2>&1 || timeout 2 curl -f http://localhost:5000 > /dev/null 2>&1; then
             print_success "Backend is healthy"
             BACKEND_READY=true
@@ -1523,9 +1523,9 @@ wait_for_services() {
         print_warning "Backend not responding yet (may still be starting)"
     fi
     
-    # Check frontend (with timeout)
+    # Check frontend (with timeout - quick check)
     FRONTEND_READY=false
-    for i in {1..30}; do
+    for i in {1..10}; do
         if timeout 2 curl -f http://localhost:3000 > /dev/null 2>&1; then
             print_success "Frontend is healthy"
             FRONTEND_READY=true
