@@ -179,34 +179,67 @@ setup_git_repo() {
             git remote set-url origin "$GIT_REPO_URL" 2>/dev/null || true
         fi
         
+        # Stash or discard any local changes first
+        print_info "Discarding any local changes..."
+        git reset --hard HEAD 2>/dev/null || true
+        git clean -fd 2>/dev/null || true
+        
         # Clean any local changes and ensure we're on the correct branch
-        print_info "Cleaning local changes and fetching latest from GitHub..."
-        git fetch origin --prune 2>/dev/null || true
+        print_info "Fetching latest from GitHub..."
+        git fetch origin --prune --force 2>/dev/null || {
+            print_warning "Fetch failed, trying without prune..."
+            git fetch origin --force 2>/dev/null || true
+        }
         
         # Determine the correct branch
         BRANCH_TO_USE="$GIT_BRANCH"
-        if ! git show-ref --verify --quiet refs/remotes/origin/$GIT_BRANCH; then
+        if ! git show-ref --verify --quiet refs/remotes/origin/$GIT_BRANCH 2>/dev/null; then
             BRANCH_TO_USE="main"
             print_info "Branch $GIT_BRANCH not found, using main branch"
         fi
         
-        # Reset to match remote exactly
-        git reset --hard origin/$BRANCH_TO_USE 2>/dev/null || {
+        # Ensure we're on the correct branch locally
+        CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "main")
+        if [ "$CURRENT_BRANCH" != "$BRANCH_TO_USE" ]; then
+            print_info "Switching to branch $BRANCH_TO_USE"
+            git checkout -B "$BRANCH_TO_USE" "origin/$BRANCH_TO_USE" 2>/dev/null || {
+                git checkout -B main origin/main 2>/dev/null || true
+                BRANCH_TO_USE="main"
+            }
+        fi
+        
+        # Reset to match remote exactly - be very aggressive
+        print_info "Resetting to match GitHub exactly..."
+        git reset --hard "origin/$BRANCH_TO_USE" 2>/dev/null || {
             print_warning "Failed to reset to origin/$BRANCH_TO_USE, trying main..."
             git reset --hard origin/main 2>/dev/null || true
+            BRANCH_TO_USE="main"
         }
         
         # Clean any untracked files that might interfere
-        git clean -fd 2>/dev/null || true
+        git clean -fdx 2>/dev/null || true
         
         # Verify we got the latest
         CURRENT_COMMIT=$(git rev-parse HEAD 2>/dev/null || echo "")
-        REMOTE_COMMIT=$(git rev-parse origin/$BRANCH_TO_USE 2>/dev/null || git rev-parse origin/main 2>/dev/null || echo "")
+        REMOTE_COMMIT=$(git rev-parse "origin/$BRANCH_TO_USE" 2>/dev/null || git rev-parse origin/main 2>/dev/null || echo "")
         if [ "$CURRENT_COMMIT" = "$REMOTE_COMMIT" ] && [ -n "$CURRENT_COMMIT" ]; then
             print_success "Code updated from GitHub (commit: ${CURRENT_COMMIT:0:7})"
         else
+            print_warning "Local commit (${CURRENT_COMMIT:0:7}) differs from remote (${REMOTE_COMMIT:0:7})"
+            print_info "Forcing reset to remote..."
+            git reset --hard "origin/$BRANCH_TO_USE" 2>/dev/null || git reset --hard origin/main 2>/dev/null || true
             print_success "Code updated from GitHub"
         fi
+        
+        # Verify critical file has the fix
+        if [ -f "frontend/components/inventory/ModelsSelection.tsx" ]; then
+            if grep -q "\.map((part: Part)" "frontend/components/inventory/ModelsSelection.tsx" 2>/dev/null; then
+                print_success "Verified: ModelsSelection.tsx has the type fix"
+            else
+                print_warning "ModelsSelection.tsx might not have the latest fix - check manually"
+            fi
+        fi
+        
         return
     fi
     
