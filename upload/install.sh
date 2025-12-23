@@ -172,13 +172,31 @@ setup_git_repo() {
         print_info "Pulling latest changes from GitHub..."
         cd "$APP_DIR"
         
+        # Verify this is a valid git repository
+        if ! git rev-parse --git-dir > /dev/null 2>&1; then
+            print_warning "Directory is not a valid git repository. Initializing..."
+            git init 2>/dev/null || true
+        fi
+        
         # Check if remote exists, if not add it
         if ! git remote get-url origin > /dev/null 2>&1; then
             print_info "Remote 'origin' not found, adding it..."
-            git remote add origin "$GIT_REPO_URL" 2>/dev/null || {
-                print_warning "Failed to add remote, trying to set URL..."
-                git remote set-url origin "$GIT_REPO_URL" 2>/dev/null || true
-            }
+            if git remote add origin "$GIT_REPO_URL" 2>/dev/null; then
+                print_success "Remote 'origin' added successfully"
+            else
+                print_warning "Failed to add remote, checking if git is properly initialized..."
+                # Ensure we have at least one commit
+                if ! git rev-parse HEAD > /dev/null 2>&1; then
+                    print_info "Initializing repository with first commit..."
+                    git config user.name "KSO Installer" 2>/dev/null || true
+                    git config user.email "installer@kso.local" 2>/dev/null || true
+                    git commit --allow-empty -m "Initial commit" 2>/dev/null || true
+                fi
+                # Try adding remote again
+                git remote add origin "$GIT_REPO_URL" 2>/dev/null || {
+                    print_warning "Still cannot add remote. Repository may need manual setup."
+                }
+            fi
         else
             # Update remote URL if it changed
             CURRENT_REMOTE=$(git remote get-url origin 2>/dev/null || echo "")
@@ -188,14 +206,24 @@ setup_git_repo() {
             fi
         fi
         
-        # Verify remote is accessible
+        # Verify remote is accessible (with timeout)
         print_info "Verifying remote repository is accessible..."
-        if ! git ls-remote origin HEAD > /dev/null 2>&1; then
-            print_error "Cannot access remote repository. Please check:"
-            print_error "  1. Internet connection"
-            print_error "  2. Repository URL: $GIT_REPO_URL"
-            print_error "  3. Repository access permissions"
-            print_warning "Continuing with local code, but updates may not be applied"
+        if timeout 10 git ls-remote origin HEAD > /dev/null 2>&1; then
+            print_success "Remote repository is accessible"
+        else
+            print_warning "Cannot access remote repository. This might be due to:"
+            print_warning "  1. No internet connection"
+            print_warning "  2. Firewall blocking GitHub"
+            print_warning "  3. Repository requires authentication"
+            print_warning "  4. Repository URL might be incorrect"
+            print_info "Testing basic connectivity..."
+            if timeout 5 curl -s https://github.com > /dev/null 2>&1; then
+                print_info "GitHub is reachable, but repository access failed"
+                print_info "This might require authentication. Continuing with local code..."
+            else
+                print_warning "Cannot reach GitHub. No internet connection or firewall issue."
+                print_warning "Continuing with local code..."
+            fi
         fi
         
         # Stash or discard any local changes first
@@ -205,51 +233,85 @@ setup_git_repo() {
         
         # Clean any local changes and ensure we're on the correct branch
         print_info "Fetching latest from GitHub..."
-        if git fetch origin --prune --force 2>/dev/null; then
+        FETCH_SUCCESS=false
+        if timeout 30 git fetch origin --prune --force 2>/dev/null; then
             print_success "Fetch successful"
-        elif git fetch origin --force 2>/dev/null; then
+            FETCH_SUCCESS=true
+        elif timeout 30 git fetch origin --force 2>/dev/null; then
             print_success "Fetch successful (without prune)"
+            FETCH_SUCCESS=true
         else
             print_warning "Fetch failed, checking remote configuration..."
-            # Try to re-add remote if fetch fails
-            git remote remove origin 2>/dev/null || true
-            git remote add origin "$GIT_REPO_URL" 2>/dev/null || true
-            git fetch origin --force 2>/dev/null || {
-                print_error "Unable to fetch from GitHub. Using local code."
-                print_error "Please check your internet connection and repository access."
-            }
+            # Verify remote still exists
+            if git remote get-url origin > /dev/null 2>&1; then
+                print_info "Remote exists, trying alternative fetch method..."
+                # Try with different timeout and without redirecting stderr to see actual error
+                if timeout 30 git fetch origin --force 2>&1 | head -3; then
+                    FETCH_SUCCESS=true
+                fi
+            else
+                print_warning "Remote 'origin' is missing, re-adding..."
+                git remote add origin "$GIT_REPO_URL" 2>/dev/null || true
+            fi
+            
+            if [ "$FETCH_SUCCESS" = false ]; then
+                print_warning "Unable to fetch from GitHub. This is not critical if you have the latest code."
+                print_info "You can manually update later with: cd $APP_DIR && git pull origin main"
+            fi
         fi
         
         # Determine the correct branch
         BRANCH_TO_USE="$GIT_BRANCH"
-        if ! git show-ref --verify --quiet refs/remotes/origin/$GIT_BRANCH 2>/dev/null; then
+        if [ "$FETCH_SUCCESS" = true ]; then
+            if ! git show-ref --verify --quiet refs/remotes/origin/$GIT_BRANCH 2>/dev/null; then
+                BRANCH_TO_USE="main"
+                print_info "Branch $GIT_BRANCH not found, using main branch"
+            fi
+        else
+            # If fetch failed, use local branch
             BRANCH_TO_USE="main"
-            print_info "Branch $GIT_BRANCH not found, using main branch"
+            print_info "Using local branch: $BRANCH_TO_USE (fetch failed)"
         fi
         
         # Ensure we're on the correct branch locally
         CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "main")
         if [ "$CURRENT_BRANCH" != "$BRANCH_TO_USE" ]; then
             print_info "Switching to branch $BRANCH_TO_USE"
-            git checkout -B "$BRANCH_TO_USE" "origin/$BRANCH_TO_USE" 2>/dev/null || {
-                git checkout -B main origin/main 2>/dev/null || true
-                BRANCH_TO_USE="main"
-            }
+            if [ "$FETCH_SUCCESS" = true ] && git show-ref --verify --quiet "refs/remotes/origin/$BRANCH_TO_USE" 2>/dev/null; then
+                git checkout -B "$BRANCH_TO_USE" "origin/$BRANCH_TO_USE" 2>/dev/null || {
+                    git checkout -B main origin/main 2>/dev/null || true
+                    BRANCH_TO_USE="main"
+                }
+            else
+                # Create branch locally if remote reference doesn't exist
+                git checkout -B "$BRANCH_TO_USE" 2>/dev/null || true
+            fi
         fi
         
-        # Pull latest changes explicitly
-        print_info "Pulling latest changes from GitHub..."
-        git pull origin "$BRANCH_TO_USE" --force --no-edit 2>/dev/null || {
-            print_warning "Pull failed, trying reset method..."
-        }
-        
-        # Reset to match remote exactly - be very aggressive
-        print_info "Resetting to match GitHub exactly..."
-        git reset --hard "origin/$BRANCH_TO_USE" 2>/dev/null || {
-            print_warning "Failed to reset to origin/$BRANCH_TO_USE, trying main..."
-            git reset --hard origin/main 2>/dev/null || true
-            BRANCH_TO_USE="main"
-        }
+        # Pull latest changes explicitly (only if fetch was successful)
+        if [ "$FETCH_SUCCESS" = true ]; then
+            print_info "Pulling latest changes from GitHub..."
+            if timeout 30 git pull origin "$BRANCH_TO_USE" --force --no-edit 2>/dev/null; then
+                print_success "Pull successful"
+            else
+                print_warning "Pull failed, trying reset method..."
+                # Reset to match remote exactly - be very aggressive
+                print_info "Resetting to match GitHub exactly..."
+                if git show-ref --verify --quiet "refs/remotes/origin/$BRANCH_TO_USE" 2>/dev/null; then
+                    git reset --hard "origin/$BRANCH_TO_USE" 2>/dev/null || {
+                        print_warning "Failed to reset to origin/$BRANCH_TO_USE, trying main..."
+                        if git show-ref --verify --quiet "refs/remotes/origin/main" 2>/dev/null; then
+                            git reset --hard origin/main 2>/dev/null || true
+                            BRANCH_TO_USE="main"
+                        fi
+                    }
+                else
+                    print_warning "Remote branch reference not available, keeping local code"
+                fi
+            fi
+        else
+            print_warning "Skipping pull/reset - fetch was not successful. Using local code."
+        fi
         
         # Clean any untracked files that might interfere
         git clean -fdx 2>/dev/null || true
