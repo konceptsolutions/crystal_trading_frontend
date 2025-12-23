@@ -172,92 +172,118 @@ setup_git_repo() {
         print_info "Pulling latest changes from GitHub..."
         cd "$APP_DIR"
         
-        # Verify this is a valid git repository
-        if ! git rev-parse --git-dir > /dev/null 2>&1; then
-            print_warning "Directory is not a valid git repository. Initializing..."
+        # Check if this is actually a git repository (don't reinitialize if .git exists)
+        if [ ! -f "$APP_DIR/.git/config" ] && [ ! -d "$APP_DIR/.git/objects" ]; then
+            print_warning "Git directory exists but appears corrupted. Reinitializing..."
+            rm -rf "$APP_DIR/.git" 2>/dev/null || true
             git init 2>/dev/null || true
+            git config user.name "KSO Installer" 2>/dev/null || true
+            git config user.email "installer@kso.local" 2>/dev/null || true
+        fi
+        
+        # Ensure git config is set (needed for some operations)
+        if ! git config user.name > /dev/null 2>&1; then
+            git config user.name "KSO Installer" 2>/dev/null || true
+            git config user.email "installer@kso.local" 2>/dev/null || true
         fi
         
         # Check if remote exists, if not add it
-        if ! git remote get-url origin > /dev/null 2>&1; then
-            print_info "Remote 'origin' not found, adding it..."
-            if git remote add origin "$GIT_REPO_URL" 2>/dev/null; then
-                print_success "Remote 'origin' added successfully"
-            else
-                print_warning "Failed to add remote, checking if git is properly initialized..."
-                # Ensure we have at least one commit
-                if ! git rev-parse HEAD > /dev/null 2>&1; then
-                    print_info "Initializing repository with first commit..."
-                    git config user.name "KSO Installer" 2>/dev/null || true
-                    git config user.email "installer@kso.local" 2>/dev/null || true
-                    git commit --allow-empty -m "Initial commit" 2>/dev/null || true
-                fi
-                # Try adding remote again
-                git remote add origin "$GIT_REPO_URL" 2>/dev/null || {
-                    print_warning "Still cannot add remote. Repository may need manual setup."
-                }
-            fi
-        else
-            # Update remote URL if it changed
+        REMOTE_EXISTS=false
+        if git remote get-url origin > /dev/null 2>&1; then
+            REMOTE_EXISTS=true
             CURRENT_REMOTE=$(git remote get-url origin 2>/dev/null || echo "")
             if [ "$CURRENT_REMOTE" != "$GIT_REPO_URL" ]; then
-                print_info "Updating remote URL to $GIT_REPO_URL"
+                print_info "Updating remote URL from $CURRENT_REMOTE to $GIT_REPO_URL"
                 git remote set-url origin "$GIT_REPO_URL" 2>/dev/null || true
-            fi
-        fi
-        
-        # Verify remote is accessible (with timeout)
-        print_info "Verifying remote repository is accessible..."
-        if timeout 10 git ls-remote origin HEAD > /dev/null 2>&1; then
-            print_success "Remote repository is accessible"
-        else
-            print_warning "Cannot access remote repository. This might be due to:"
-            print_warning "  1. No internet connection"
-            print_warning "  2. Firewall blocking GitHub"
-            print_warning "  3. Repository requires authentication"
-            print_warning "  4. Repository URL might be incorrect"
-            print_info "Testing basic connectivity..."
-            if timeout 5 curl -s https://github.com > /dev/null 2>&1; then
-                print_info "GitHub is reachable, but repository access failed"
-                print_info "This might require authentication. Continuing with local code..."
             else
-                print_warning "Cannot reach GitHub. No internet connection or firewall issue."
-                print_warning "Continuing with local code..."
+                print_success "Remote 'origin' is correctly configured"
             fi
-        fi
-        
-        # Stash or discard any local changes first
-        print_info "Discarding any local changes..."
-        git reset --hard HEAD 2>/dev/null || true
-        git clean -fd 2>/dev/null || true
-        
-        # Clean any local changes and ensure we're on the correct branch
-        print_info "Fetching latest from GitHub..."
-        FETCH_SUCCESS=false
-        if timeout 30 git fetch origin --prune --force 2>/dev/null; then
-            print_success "Fetch successful"
-            FETCH_SUCCESS=true
-        elif timeout 30 git fetch origin --force 2>/dev/null; then
-            print_success "Fetch successful (without prune)"
-            FETCH_SUCCESS=true
         else
-            print_warning "Fetch failed, checking remote configuration..."
-            # Verify remote still exists
-            if git remote get-url origin > /dev/null 2>&1; then
-                print_info "Remote exists, trying alternative fetch method..."
-                # Try with different timeout and without redirecting stderr to see actual error
-                if timeout 30 git fetch origin --force 2>&1 | head -3; then
-                    FETCH_SUCCESS=true
+            print_info "Remote 'origin' not found, adding it..."
+            # Try to add remote - this should work even without commits
+            if git remote add origin "$GIT_REPO_URL" 2>/dev/null; then
+                print_success "Remote 'origin' added successfully"
+                REMOTE_EXISTS=true
+            else
+                print_warning "Failed to add remote. Trying alternative method..."
+                # If adding fails, try removing any existing origin first
+                git remote remove origin 2>/dev/null || true
+                if git remote add origin "$GIT_REPO_URL" 2>/dev/null; then
+                    print_success "Remote 'origin' added successfully (after cleanup)"
+                    REMOTE_EXISTS=true
+                else
+                    print_error "Cannot add remote. This may indicate a git configuration issue."
+                    print_info "Trying to diagnose the issue..."
+                    git remote -v 2>&1 || true
                 fi
+            fi
+        fi
+        
+        # Verify remote is accessible (with timeout) - only if remote exists
+        if [ "$REMOTE_EXISTS" = true ]; then
+            print_info "Verifying remote repository is accessible..."
+            REMOTE_ACCESSIBLE=false
+            if timeout 15 git ls-remote origin HEAD > /dev/null 2>&1; then
+                print_success "Remote repository is accessible"
+                REMOTE_ACCESSIBLE=true
             else
-                print_warning "Remote 'origin' is missing, re-adding..."
-                git remote add origin "$GIT_REPO_URL" 2>/dev/null || true
+                # Try with the full URL directly
+                print_info "Trying direct access to repository..."
+                if timeout 15 git ls-remote "$GIT_REPO_URL" HEAD > /dev/null 2>&1; then
+                    print_success "Repository is accessible via direct URL"
+                    REMOTE_ACCESSIBLE=true
+                    # Update remote URL if direct access works
+                    git remote set-url origin "$GIT_REPO_URL" 2>/dev/null || true
+                else
+                    print_warning "Cannot access remote repository. This might be due to:"
+                    print_warning "  1. No internet connection"
+                    print_warning "  2. Firewall blocking GitHub"
+                    print_warning "  3. Repository requires authentication"
+                    print_warning "  4. Repository URL might be incorrect"
+                    print_info "Testing basic connectivity..."
+                    if timeout 5 curl -s -I https://github.com > /dev/null 2>&1; then
+                        print_info "GitHub is reachable, testing repository URL..."
+                        # Test the specific repository URL
+                        if timeout 5 curl -s -I "$GIT_REPO_URL" > /dev/null 2>&1; then
+                            print_info "Repository URL is reachable via HTTP"
+                            print_warning "Git protocol might be blocked. Repository should still work."
+                        else
+                            print_warning "Repository URL is not directly accessible"
+                        fi
+                    else
+                        print_warning "Cannot reach GitHub. No internet connection or firewall issue."
+                    fi
+                fi
             fi
+        else
+            print_warning "Remote not configured, skipping connectivity test"
+            REMOTE_ACCESSIBLE=false
+        fi
+        
+        # Only try to fetch if remote exists and is accessible
+        FETCH_SUCCESS=false
+        if [ "$REMOTE_EXISTS" = true ] && [ "$REMOTE_ACCESSIBLE" = true ]; then
+            # Stash or discard any local changes first
+            print_info "Discarding any local changes..."
+            git reset --hard HEAD 2>/dev/null || true
+            git clean -fd 2>/dev/null || true
             
-            if [ "$FETCH_SUCCESS" = false ]; then
-                print_warning "Unable to fetch from GitHub. This is not critical if you have the latest code."
-                print_info "You can manually update later with: cd $APP_DIR && git pull origin main"
+            # Fetch latest from GitHub
+            print_info "Fetching latest from GitHub..."
+            if timeout 30 git fetch origin --prune --force 2>/dev/null; then
+                print_success "Fetch successful"
+                FETCH_SUCCESS=true
+            elif timeout 30 git fetch origin --force 2>/dev/null; then
+                print_success "Fetch successful (without prune)"
+                FETCH_SUCCESS=true
+            else
+                print_warning "Fetch failed. Showing error details..."
+                timeout 30 git fetch origin --force 2>&1 | head -5 || true
+                print_warning "This might be due to network issues or authentication requirements."
             fi
+        else
+            print_warning "Skipping fetch - remote is not properly configured or accessible"
+            print_info "You can manually update later with: cd $APP_DIR && git pull origin main"
         fi
         
         # Determine the correct branch
