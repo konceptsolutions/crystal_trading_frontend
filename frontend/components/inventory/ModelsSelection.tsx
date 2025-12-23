@@ -41,6 +41,10 @@ export default function ModelsSelection() {
   const [editQtyUsed, setEditQtyUsed] = useState(1);
   const [saving, setSaving] = useState<string | null>(null);
   const [deleting, setDeleting] = useState<string | null>(null);
+  const [isAdding, setIsAdding] = useState(false);
+  const [newModelNo, setNewModelNo] = useState('');
+  const [newQtyUsed, setNewQtyUsed] = useState(1);
+  const [adding, setAdding] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const masterPartDropdownRef = useRef<HTMLDivElement>(null);
@@ -241,6 +245,7 @@ export default function ModelsSelection() {
     setPartsSearch(part.partNo);
     setShowPartsDropdown(false);
     setEditingModelId(null);
+    setIsAdding(false); // Cancel any ongoing add operation
     // If master part number is empty, set it from the selected part
     if (!modelNumber.trim() && part.masterPartNo) {
       setModelNumber(part.masterPartNo);
@@ -304,6 +309,50 @@ export default function ModelsSelection() {
       alert(error.response?.data?.error || 'Failed to delete model');
     } finally {
       setDeleting(null);
+    }
+  };
+
+  const handleStartAdd = () => {
+    setIsAdding(true);
+    setNewModelNo('');
+    setNewQtyUsed(1);
+    setEditingModelId(null); // Cancel any ongoing edit
+  };
+
+  const handleCancelAdd = () => {
+    setIsAdding(false);
+    setNewModelNo('');
+    setNewQtyUsed(1);
+  };
+
+  const handleAddModel = async () => {
+    if (!newModelNo.trim()) {
+      alert('Model number is required');
+      return;
+    }
+
+    if (!selectedPartId) {
+      alert('Please select a part first');
+      return;
+    }
+
+    setAdding(true);
+    try {
+      await api.post(`/models/part/${selectedPartId}`, {
+        modelNo: newModelNo.trim(),
+        qtyUsed: newQtyUsed,
+      });
+      
+      // Reload models
+      await loadModelsForPart(selectedPartId);
+      setIsAdding(false);
+      setNewModelNo('');
+      setNewQtyUsed(1);
+    } catch (error: any) {
+      console.error('Failed to add model:', error);
+      alert(error.response?.data?.error || 'Failed to add model');
+    } finally {
+      setAdding(false);
     }
   };
 
@@ -509,24 +558,41 @@ export default function ModelsSelection() {
                   Models for {selectedPart?.partNo}
                 </CardTitle>
               </div>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() => {
-                  if (selectedPartId) {
-                    loadModelsForPart(selectedPartId);
-                    loadParts(); // Also refresh parts list
-                  }
-                }}
-                disabled={modelsLoading}
-                className="flex items-center gap-2 text-xs"
-              >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                </svg>
-                Refresh
-              </Button>
+              <div className="flex items-center gap-2">
+                {!isAdding && (
+                  <Button
+                    type="button"
+                    variant="default"
+                    size="sm"
+                    onClick={handleStartAdd}
+                    disabled={modelsLoading || editingModelId !== null}
+                    className="flex items-center gap-2 text-xs"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                    </svg>
+                    Add Model
+                  </Button>
+                )}
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    if (selectedPartId) {
+                      loadModelsForPart(selectedPartId);
+                      loadParts(); // Also refresh parts list
+                    }
+                  }}
+                  disabled={modelsLoading}
+                  className="flex items-center gap-2 text-xs"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                  </svg>
+                  Refresh
+                </Button>
+              </div>
             </div>
             {selectedPart?.description && (
               <p className="text-sm text-gray-500 mt-2">{selectedPart.description}</p>
@@ -543,10 +609,6 @@ export default function ModelsSelection() {
                   <span className="text-sm text-gray-500">Loading models...</span>
                 </div>
               </div>
-            ) : models.length === 0 ? (
-              <div className="flex items-center justify-center py-12">
-                <p className="text-sm text-gray-500">No models found for this part</p>
-              </div>
             ) : (
               <div className="overflow-x-auto">
                 <Table>
@@ -558,7 +620,65 @@ export default function ModelsSelection() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {models.map((model) => (
+                    {isAdding && (
+                      <TableRow className="border-b border-gray-100 bg-primary-50/30">
+                        <TableCell className="font-medium text-gray-900 py-3 px-6">
+                          <Input
+                            value={newModelNo}
+                            onChange={(e) => setNewModelNo(e.target.value)}
+                            className="h-8 text-sm border-gray-300 focus:border-primary-400"
+                            placeholder="Enter model number"
+                            autoFocus
+                          />
+                        </TableCell>
+                        <TableCell className="text-gray-700 py-3 px-6 text-right font-medium">
+                          <Input
+                            type="number"
+                            min="1"
+                            value={newQtyUsed}
+                            onChange={(e) => setNewQtyUsed(parseInt(e.target.value) || 1)}
+                            className="h-8 w-20 text-sm text-right border-gray-300 focus:border-primary-400"
+                          />
+                        </TableCell>
+                        <TableCell className="text-gray-700 py-3 px-6 text-center">
+                          <div className="flex items-center justify-center gap-2">
+                            <Button
+                              size="xs"
+                              variant="default"
+                              onClick={handleAddModel}
+                              disabled={adding}
+                              className="h-7 px-2 text-xs"
+                            >
+                              {adding ? (
+                                <svg className="animate-spin h-3 w-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                </svg>
+                              ) : (
+                                'Save'
+                              )}
+                            </Button>
+                            <Button
+                              size="xs"
+                              variant="outline"
+                              onClick={handleCancelAdd}
+                              disabled={adding}
+                              className="h-7 px-2 text-xs"
+                            >
+                              Cancel
+                            </Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    )}
+                    {models.length === 0 && !isAdding ? (
+                      <TableRow>
+                        <TableCell colSpan={3} className="text-center py-12">
+                          <p className="text-sm text-gray-500">No models found for this part</p>
+                        </TableCell>
+                      </TableRow>
+                    ) : (
+                      models.map((model) => (
                       <TableRow key={model.id} className="border-b border-gray-100 hover:bg-gray-50">
                         <TableCell className="font-medium text-gray-900 py-3 px-6">
                           {editingModelId === model.id ? (
@@ -646,7 +766,8 @@ export default function ModelsSelection() {
                           )}
                         </TableCell>
                       </TableRow>
-                    ))}
+                      ))
+                    )}
                   </TableBody>
                 </Table>
               </div>
