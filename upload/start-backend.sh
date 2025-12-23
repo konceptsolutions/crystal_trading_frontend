@@ -127,40 +127,71 @@ else
 fi
 
 # Check if port 5000 is already in use and kill it
-if lsof -Pi :5000 -sTCP:LISTEN -t >/dev/null 2>&1 ; then
+if lsof -Pi :5000 -sTCP:LISTEN -t >/dev/null 2>&1 || netstat -tuln 2>/dev/null | grep -q ":5000 " || ss -tuln 2>/dev/null | grep -q ":5000 "; then
     print_warning "Port 5000 is already in use"
-    print_info "Killing process on port 5000..."
+    print_info "Attempting to free port 5000..."
     
-    # Try multiple methods to kill the process
-    PID=$(lsof -ti:5000 2>/dev/null || echo "")
-    if [ -n "$PID" ]; then
-        kill -9 $PID 2>/dev/null || true
+    # Method 1: Try lsof
+    if command -v lsof &> /dev/null; then
+        PIDS=$(lsof -ti:5000 2>/dev/null || echo "")
+        if [ -n "$PIDS" ]; then
+            print_info "Found processes using port 5000: $PIDS"
+            for pid in $PIDS; do
+                kill -9 $pid 2>/dev/null || true
+            done
+        fi
     fi
     
-    # Also try with fuser if available
+    # Method 2: Try fuser if available
     if command -v fuser &> /dev/null; then
         fuser -k 5000/tcp 2>/dev/null || true
     fi
     
-    # Wait a bit and check again
-    sleep 3
-    
-    # Verify port is free
-    if lsof -Pi :5000 -sTCP:LISTEN -t >/dev/null 2>&1 ; then
-        print_warning "Port 5000 is still in use. Trying more aggressive kill..."
-        # Get all PIDs using port 5000
-        PIDS=$(lsof -ti:5000 2>/dev/null || echo "")
-        for pid in $PIDS; do
-            kill -9 $pid 2>/dev/null || true
-        done
-        sleep 2
+    # Method 3: Try netstat + kill
+    if command -v netstat &> /dev/null; then
+        NETSTAT_PID=$(netstat -tlnp 2>/dev/null | grep ":5000 " | awk '{print $7}' | cut -d'/' -f1 | head -1)
+        if [ -n "$NETSTAT_PID" ] && [ "$NETSTAT_PID" != "-" ]; then
+            kill -9 $NETSTAT_PID 2>/dev/null || true
+        fi
     fi
     
-    # Final check
-    if lsof -Pi :5000 -sTCP:LISTEN -t >/dev/null 2>&1 ; then
-        print_error "Cannot free port 5000. Please manually kill the process:"
-        print_info "Run: lsof -ti:5000 | xargs kill -9"
-        exit 1
+    # Method 4: Try ss + kill
+    if command -v ss &> /dev/null; then
+        SS_PID=$(ss -tlnp 2>/dev/null | grep ":5000 " | grep -oP 'pid=\K[0-9]+' | head -1)
+        if [ -n "$SS_PID" ]; then
+            kill -9 $SS_PID 2>/dev/null || true
+        fi
+    fi
+    
+    # Wait for processes to die
+    sleep 3
+    
+    # Final verification
+    PORT_IN_USE=false
+    if command -v lsof &> /dev/null; then
+        if lsof -Pi :5000 -sTCP:LISTEN -t >/dev/null 2>&1; then
+            PORT_IN_USE=true
+        fi
+    elif command -v netstat &> /dev/null; then
+        if netstat -tuln 2>/dev/null | grep -q ":5000 "; then
+            PORT_IN_USE=true
+        fi
+    elif command -v ss &> /dev/null; then
+        if ss -tuln 2>/dev/null | grep -q ":5000 "; then
+            PORT_IN_USE=true
+        fi
+    fi
+    
+    if [ "$PORT_IN_USE" = true ]; then
+        print_error "Cannot free port 5000 automatically."
+        print_info "Please run these commands manually:"
+        print_info "  lsof -ti:5000 | xargs kill -9"
+        print_info "  OR"
+        print_info "  netstat -tlnp | grep :5000"
+        print_info "  Then kill the PID shown"
+        print_info ""
+        print_warning "Attempting to continue anyway (might fail)..."
+        sleep 2
     else
         print_success "Port 5000 is now free"
     fi
