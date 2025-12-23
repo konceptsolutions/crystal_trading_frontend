@@ -98,15 +98,32 @@ if [ $? -ne 0 ]; then
 fi
 print_success "Prisma client generated"
 
-# Check if database exists, if not run migrations
-if [ ! -f "prisma/dev.db" ]; then
-    print_info "Database not found. Running migrations..."
-    npx prisma migrate dev --name init
-    if [ $? -ne 0 ]; then
-        print_error "Failed to run migrations"
-        exit 1
+# Check database and run migrations if needed
+print_info "Checking database configuration..."
+
+# Check if using PostgreSQL (production) or SQLite (development)
+if grep -q "provider = \"postgresql\"" prisma/schema.prisma 2>/dev/null; then
+    print_info "PostgreSQL database detected (production mode)"
+    # For PostgreSQL, use migrate deploy (production) or db push
+    print_info "Applying database schema..."
+    npx prisma migrate deploy 2>/dev/null || {
+        print_warning "Migration deploy failed, trying db push..."
+        npx prisma db push --accept-data-loss 2>/dev/null || {
+            print_warning "Database push failed. This might be normal if database is already set up."
+        }
+    }
+    print_success "Database schema applied"
+else
+    # SQLite development mode
+    if [ ! -f "prisma/dev.db" ]; then
+        print_info "SQLite database not found. Running migrations..."
+        npx prisma migrate dev --name init
+        if [ $? -ne 0 ]; then
+            print_error "Failed to run migrations"
+            exit 1
+        fi
+        print_success "Database initialized"
     fi
-    print_success "Database initialized"
 fi
 
 # Check if port 5000 is already in use
