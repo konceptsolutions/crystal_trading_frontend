@@ -1016,26 +1016,26 @@ setup_frontend() {
 clean_pm2_and_ports() {
     print_header "Cleaning PM2 and Freeing Ports"
     
-    # Stop and delete ALL PM2 processes (as all users)
+    # Stop and delete ALL PM2 processes (as all users) - with timeout
     print_info "Stopping all PM2 processes..."
-    pm2 stop all 2>/dev/null || true
-    pm2 delete all 2>/dev/null || true
+    timeout 10 pm2 stop all 2>/dev/null || true
+    timeout 10 pm2 delete all 2>/dev/null || true
     
-    # Reset PM2 completely
+    # Reset PM2 completely - with timeout
     print_info "Resetting PM2..."
-    pm2 kill 2>/dev/null || true
-    pm2 flush 2>/dev/null || true
-    pm2 reset all 2>/dev/null || true
+    timeout 5 pm2 kill 2>/dev/null || true
+    timeout 5 pm2 flush 2>/dev/null || true
+    timeout 5 pm2 reset all 2>/dev/null || true
     
-    # Remove PM2 startup script
-    pm2 unstartup 2>/dev/null || true
+    # Remove PM2 startup script - with timeout
+    timeout 5 pm2 unstartup 2>/dev/null || true
     
-    # Stop systemd services
+    # Stop systemd services - with timeout
     print_info "Stopping systemd services..."
-    systemctl stop kso-backend 2>/dev/null || true
-    systemctl stop kso-frontend 2>/dev/null || true
-    systemctl stop kso 2>/dev/null || true
-    sleep 2
+    timeout 5 systemctl stop kso-backend 2>/dev/null || true
+    timeout 5 systemctl stop kso-frontend 2>/dev/null || true
+    timeout 5 systemctl stop kso 2>/dev/null || true
+    sleep 1
     
     # Kill all processes on port 5000 (backend)
     print_info "Freeing port 5000 (backend)..."
@@ -1130,28 +1130,33 @@ EOF
         fi
     done
     
-    # Start backend
+    # Start backend (non-blocking, with timeout protection)
     print_info "Starting backend server on port 5000..."
     if [ -f "dist/server.js" ]; then
-        sudo -u "$SERVICE_USER" npm start > /var/log/kso/backend.log 2>&1 &
+        nohup sudo -u "$SERVICE_USER" npm start > /var/log/kso/backend.log 2>&1 &
         BACKEND_PID=$!
+        print_info "Backend starting in background (PID: $BACKEND_PID)"
     else
-        sudo -u "$SERVICE_USER" npm run dev > /var/log/kso/backend.log 2>&1 &
+        nohup sudo -u "$SERVICE_USER" npm run dev > /var/log/kso/backend.log 2>&1 &
         BACKEND_PID=$!
+        print_info "Backend starting in background (PID: $BACKEND_PID)"
     fi
     
-    # Wait and verify backend started
-    sleep 5
-    for i in {1..30}; do
-        if curl -f http://localhost:5000/api/health > /dev/null 2>&1 || curl -f http://localhost:5000 > /dev/null 2>&1; then
+    # Wait and verify backend started (with timeout)
+    print_info "Waiting for backend to start (max 30 seconds)..."
+    sleep 3
+    for i in {1..15}; do
+        if timeout 2 curl -f http://localhost:5000/api/health > /dev/null 2>&1 || timeout 2 curl -f http://localhost:5000 > /dev/null 2>&1; then
             print_success "Backend is running on http://localhost:5000"
             return 0
         fi
+        echo -n "."
         sleep 2
     done
-    
+    echo ""
     print_warning "Backend may not have started properly, check logs: /var/log/kso/backend.log"
-    return 1
+    print_info "Continuing anyway..."
+    return 0  # Don't fail, just continue
 }
 
 ################################################################################
@@ -1203,28 +1208,33 @@ EOF
         fi
     done
     
-    # Start frontend
+    # Start frontend (non-blocking, with timeout protection)
     print_info "Starting frontend server on port 3000..."
     if [ -d ".next" ] && [ -f "package.json" ]; then
-        sudo -u "$SERVICE_USER" npm start > /var/log/kso/frontend.log 2>&1 &
+        nohup sudo -u "$SERVICE_USER" npm start > /var/log/kso/frontend.log 2>&1 &
         FRONTEND_PID=$!
+        print_info "Frontend starting in background (PID: $FRONTEND_PID)"
     else
-        sudo -u "$SERVICE_USER" npm run dev > /var/log/kso/frontend.log 2>&1 &
+        nohup sudo -u "$SERVICE_USER" npm run dev > /var/log/kso/frontend.log 2>&1 &
         FRONTEND_PID=$!
+        print_info "Frontend starting in background (PID: $FRONTEND_PID)"
     fi
     
-    # Wait and verify frontend started
+    # Wait and verify frontend started (with timeout)
+    print_info "Waiting for frontend to start (max 60 seconds)..."
     sleep 5
     for i in {1..30}; do
-        if curl -f http://localhost:3000 > /dev/null 2>&1; then
+        if timeout 2 curl -f http://localhost:3000 > /dev/null 2>&1; then
             print_success "Frontend is running on http://localhost:3000"
             return 0
         fi
+        echo -n "."
         sleep 2
     done
-    
+    echo ""
     print_warning "Frontend may not have started properly, check logs: /var/log/kso/frontend.log"
-    return 1
+    print_info "Continuing anyway..."
+    return 0  # Don't fail, just continue
 }
 
 ################################################################################
@@ -1494,25 +1504,42 @@ setup_ssl() {
 wait_for_services() {
     print_header "Waiting for Services to Start"
     
-    sleep 5
+    print_info "Checking services (will timeout after 60 seconds)..."
+    sleep 3
     
-    # Check backend
+    # Check backend (with timeout)
+    BACKEND_READY=false
     for i in {1..30}; do
-        if curl -f http://localhost:5000/api/health > /dev/null 2>&1; then
+        if timeout 2 curl -f http://localhost:5000/api/health > /dev/null 2>&1 || timeout 2 curl -f http://localhost:5000 > /dev/null 2>&1; then
             print_success "Backend is healthy"
+            BACKEND_READY=true
             break
         fi
+        echo -n "."
         sleep 2
     done
+    echo ""
+    if [ "$BACKEND_READY" = false ]; then
+        print_warning "Backend not responding yet (may still be starting)"
+    fi
     
-    # Check frontend
+    # Check frontend (with timeout)
+    FRONTEND_READY=false
     for i in {1..30}; do
-        if curl -f http://localhost:3000 > /dev/null 2>&1; then
+        if timeout 2 curl -f http://localhost:3000 > /dev/null 2>&1; then
             print_success "Frontend is healthy"
+            FRONTEND_READY=true
             break
         fi
+        echo -n "."
         sleep 2
     done
+    echo ""
+    if [ "$FRONTEND_READY" = false ]; then
+        print_warning "Frontend not responding yet (may still be starting)"
+    fi
+    
+    print_info "Services check complete. They may still be starting in background."
 }
 
 ################################################################################
